@@ -54,7 +54,9 @@
 
 ### Flow 流程图
 
-- `flow` / `flowchart` 围栏使用本地按需加载的 flowchart.js 渲染，支持 start/end、operation、condition、inputoutput、subroutine、分支方向及回路。
+- `flow` / `flowchart` 围栏保留 flowchart.js 语法解析，使用按需加载的 ELK layered 正交避障布局和本地 SVG 渲染，支持 start/end、operation、condition、inputoutput、subroutine、分支方向及回路。
+- 节点统一为 180×84，保留不同语义形状；长文字限制两行并省略，SVG title 和无障碍名称保留全文，悬停可查看。连线先于节点绘制，布局留出节点、边和分支标签间距，回路尽量绕行。
+- `src/flow-layout.ts` 定义节点尺寸、文字摘要、端口和路由选项；几何测试检查回路连线不穿过无关节点外框。
 - 即时编辑默认显示 SVG，点击“编辑源码”修改，点击“预览流程图”恢复图形；Markdown 预览也显示图形。
 - 保存、Git、Markdown 导出和复制保持原始流程图代码；HTML 导出转换成内联 SVG，打印显示当前图形。
 - 渲染结果用 DOMPurify 清洗，禁用链接、外部图片及事件属性，只保留箭头所需的本地 SVG 引用；源码大小与节点数量有保护上限。
@@ -111,7 +113,7 @@
 | `src/editor-toolbar.ts` | 原生工具栏复用、单行滚动、弹层和提示定位 |
 | `src/markdown-shortcuts.ts` | Markdown 输入规则及回车转换 |
 | `src/code-highlighting.ts` | Prism 语言注册、安全代码高亮 |
-| `src/flow-source.ts`、`src/flow-diagrams.ts` | Flow 语法检查、安全 SVG 渲染及源码切换 |
+| `src/flow-source.ts`、`src/flow-layout.ts`、`src/flow-diagrams.ts` | Flow 语法检查、避障布局、安全 SVG 渲染及源码切换 |
 | `src/code-blocks.ts` | 高亮插件适配、代码复制、预览控件及清理 |
 | `src/style.css`、`src/ui-polish.css` | 布局、字体、响应式、主题、语法色及界面视觉细节 |
 | `src/documents.ts`、`src/autosave.ts` | 工作区与目录模型、保存队列和冲突处理 |

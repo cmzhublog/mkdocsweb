@@ -13,6 +13,7 @@
     "@toast-ui/editor": "3.2.3",
     "@toast-ui/editor-plugin-code-syntax-highlight": "^3.1.0",
     "dompurify": "^3.3.0",
+    "elkjs": "^0.12.2",
     "fflate": "^0.8.3",
     "flowchart.js": "^1.18.1",
     "lucide": "^0.468.0",
