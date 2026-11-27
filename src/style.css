@@ -100,3 +100,13 @@
 .document-format-toolbar .toastui-editor-popup,
 .document-format-toolbar .toastui-editor-tooltip { margin:0!important; }
 .document-format-toolbar .toastui-editor-defaultUI-toolbar { align-items:center; }
+
+/* Put editing controls in the application header, above the document title. */
+.topbar > .editor-bar { flex:1; min-width:0; border:0; padding:0; }
+.topbar .editor-toolbar-mount { margin:0; }
+.topbar .breadcrumb { flex:0 1 200px; max-width:20%; }
+.topbar .breadcrumb .icon-button { flex:none; }
+@media(max-width:950px) {
+  .topbar .breadcrumb { flex:0 0 32px; max-width:32px; gap:0; }
+  .topbar #crumb-title { display:none; }
+}
