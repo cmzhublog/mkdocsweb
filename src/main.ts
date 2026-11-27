@@ -43,7 +43,10 @@ $('#app').innerHTML = `
     <footer class="statusbar"><div><span class="status-dot"></span><span id="footer-state">所有更改已保存至本地</span></div><div><span id="word-count"></span><span class="status-divider">|</span><span id="read-time"></span><span class="status-divider">|</span><span>UTF-8</span><span class="status-divider">|</span><button id="shortcuts">${icon('keyboard')} 快捷键</button></div></footer>
   </main><input id="file-input" type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" multiple hidden/><input id="backup-input" type="file" accept=".json,application/json" hidden/><div id="toast" role="status" hidden></div><dialog id="dialog"><form method="dialog"><div id="dialog-content"></div><div class="dialog-actions"><button value="cancel">取消</button><button value="confirm" class="primary">确定</button></div></form></dialog>`;
 
-const editor = new Editor({ el: $('#editor'), height: '100%', initialEditType: 'wysiwyg', previewStyle: 'vertical', initialValue: active().content, language: 'zh-CN', usageStatistics: false, hideModeSwitch: true, theme, autofocus: false, toolbarItems: [['heading', 'bold', 'italic', 'strike'], ['hr', 'quote'], ['ul', 'ol', 'task'], ['table', 'link'], ['code', 'codeblock']], hooks: { addImageBlobHook: () => false } });
+function makeEditor(content: string) {
+  return new Editor({ el: $('#editor'), height: '100%', initialEditType: sourceMode ? 'markdown' : 'wysiwyg', previewStyle: 'vertical', initialValue: content, language: 'zh-CN', usageStatistics: false, hideModeSwitch: true, theme, autofocus: false, toolbarItems: [['heading', 'bold', 'italic', 'strike'], ['hr', 'quote'], ['ul', 'ol', 'task'], ['table', 'link'], ['code', 'codeblock']], hooks: { addImageBlobHook: () => false } });
+}
+let editor = makeEditor(active().content);
 let loading = false;
 let saveTimer: ReturnType<typeof setTimeout>;
 let toastTimer: ReturnType<typeof setTimeout>;
@@ -87,7 +90,9 @@ function renderOutline() {
   $('#outline-list').innerHTML = list.map((h, index) => `<button data-heading="${index}" style="--level:${Math.min(h.level, 4)}" class="${index === 0 ? 'current' : ''}">${escape(h.text)}</button>`).join('') || '<p class="empty-search">添加标题后，大纲将显示在这里</p>';
 }
 function selectNote(id: string) {
-  persist(); workspace.activeId = id; loading = true; editor.setMarkdown(active().content, false); loading = false;
+  persist(); workspace.activeId = id; loading = true;
+  // Each document owns a fresh editor history, so undo cannot restore another document.
+  editor.destroy(); editor = makeEditor(active().content); editor.on('change', onChange); editor.moveCursorToStart(false); loading = false;
   $<HTMLInputElement>('#doc-title').value = active().title; $('#crumb-title').textContent = active().title || '未命名文档';
   document.title = `${active().title || '未命名文档'} · MkDocs Web`;
   renderNotes(); renderStats(); renderOutline(); persist();
