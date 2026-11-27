@@ -43,8 +43,12 @@ $('#app').innerHTML = `
     <footer class="statusbar"><div><span class="status-dot"></span><span id="footer-state">所有更改已保存至本地</span></div><div><span id="word-count"></span><span class="status-divider">|</span><span id="read-time"></span><span class="status-divider">|</span><span>UTF-8</span><span class="status-divider">|</span><button id="shortcuts">${icon('keyboard')} 快捷键</button></div></footer>
   </main><input id="file-input" type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" multiple hidden/><input id="backup-input" type="file" accept=".json,application/json" hidden/><div id="toast" role="status" hidden></div><dialog id="dialog"><form method="dialog"><div id="dialog-content"></div><div class="dialog-actions"><button value="cancel">取消</button><button value="confirm" class="primary">确定</button></div></form></dialog>`;
 
+const editors = new Map<string, { instance: Editor; host: HTMLDivElement }>();
 function makeEditor(content: string) {
-  return new Editor({ el: $('#editor'), height: '100%', initialEditType: sourceMode ? 'markdown' : 'wysiwyg', previewStyle: 'vertical', initialValue: content, language: 'zh-CN', usageStatistics: false, hideModeSwitch: true, theme, autofocus: false, toolbarItems: [['heading', 'bold', 'italic', 'strike'], ['hr', 'quote'], ['ul', 'ol', 'task'], ['table', 'link'], ['code', 'codeblock']], hooks: { addImageBlobHook: () => false } });
+  const host = document.createElement('div'); host.className = 'editor-instance'; $('#editor').append(host);
+  const instance = new Editor({ el: host, height: '100%', initialEditType: sourceMode ? 'markdown' : 'wysiwyg', previewStyle: 'vertical', initialValue: content, language: 'zh-CN', usageStatistics: false, hideModeSwitch: true, theme, autofocus: false, toolbarItems: [['heading', 'bold', 'italic', 'strike'], ['hr', 'quote'], ['ul', 'ol', 'task'], ['table', 'link'], ['code', 'codeblock']], hooks: { addImageBlobHook: () => false } });
+  editors.set(workspace.activeId, { instance, host });
+  return instance;
 }
 let editor = makeEditor(active().content);
 let loading = false;
@@ -91,8 +95,16 @@ function renderOutline() {
 }
 function selectNote(id: string) {
   persist(); workspace.activeId = id; loading = true;
-  // Each document owns a fresh editor history, so undo cannot restore another document.
-  editor.destroy(); editor = makeEditor(active().content); editor.on('change', onChange); editor.moveCursorToStart(false); loading = false;
+  // Keep one editor per opened note: its undo history and delayed UI callbacks stay isolated.
+  const existing = editors.get(id);
+  if (existing) editor = existing.instance;
+  else { editor = makeEditor(active().content); editor.on('change', onChange); }
+  for (const [noteId, entry] of editors) {
+    entry.host.hidden = noteId !== id;
+    entry.host.classList.toggle('active-editor', noteId === id);
+  }
+  window.dispatchEvent(new Event('resize'));
+  editor.changeMode(sourceMode ? 'markdown' : 'wysiwyg', true); editor.moveCursorToStart(false); loading = false;
   $<HTMLInputElement>('#doc-title').value = active().title; $('#crumb-title').textContent = active().title || '未命名文档';
   document.title = `${active().title || '未命名文档'} · MkDocs Web`;
   renderNotes(); renderStats(); renderOutline(); persist();
@@ -117,7 +129,7 @@ $('#doc-title').oninput = () => { active().title = $<HTMLInputElement>('#doc-tit
 $('#source-toggle').onclick = () => { sourceMode = !sourceMode; editor.changeMode(sourceMode ? 'markdown' : 'wysiwyg', true); $('#source-toggle').setAttribute('aria-pressed', String(sourceMode)); $('#source-toggle span').textContent = sourceMode ? '即时编辑' : '源码模式'; };
 $('#sidebar-toggle').onclick = () => document.body.classList.toggle(window.innerWidth <= 700 ? 'sidebar-open' : 'sidebar-hidden');
 $('#focus').onclick = () => { focusMode = !focusMode; document.body.classList.toggle('focus-mode', focusMode); $('#focus span').textContent = focusMode ? '退出专注' : '专注'; $('#focus').setAttribute('aria-pressed', String(focusMode)); };
-$('#theme').onclick = () => { theme = theme === 'light' ? 'dark' : 'light'; document.documentElement.dataset.theme = theme; $('.toastui-editor-defaultUI').classList.toggle('toastui-editor-dark', theme === 'dark'); $('#theme').innerHTML = icon(theme === 'dark' ? 'sun' : 'moon'); $('#theme').setAttribute('aria-label', theme === 'dark' ? '切换浅色主题' : '切换深色主题'); refreshIcons(); try { localStorage.setItem('mkdocsweb.theme', theme); } catch {} };
+$('#theme').onclick = () => { theme = theme === 'light' ? 'dark' : 'light'; document.documentElement.dataset.theme = theme; document.querySelectorAll('.toastui-editor-defaultUI').forEach(el => el.classList.toggle('toastui-editor-dark', theme === 'dark')); $('#theme').innerHTML = icon(theme === 'dark' ? 'sun' : 'moon'); $('#theme').setAttribute('aria-label', theme === 'dark' ? '切换浅色主题' : '切换深色主题'); refreshIcons(); try { localStorage.setItem('mkdocsweb.theme', theme); } catch {} };
 $('#export').onclick = () => { $('#export-menu').hidden = !$('#export-menu').hidden; $('#export').setAttribute('aria-expanded', String(!$('#export-menu').hidden)); };
 $('#export-menu').onclick = event => { const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-export]'); if (button) { $('#export-menu').hidden = true; $('#export').setAttribute('aria-expanded', 'false'); exportNote(button.dataset.export!); } };
 document.addEventListener('click', event => { if (!(event.target as HTMLElement).closest('.export-wrap')) { $('#export-menu').hidden = true; $('#export').setAttribute('aria-expanded', 'false'); } });
@@ -139,7 +151,7 @@ $<HTMLInputElement>('#backup-input').onchange = async event => {
 function confirmDialog(html: string): Promise<boolean> { $('#dialog-content').innerHTML = html; const dialog = $<HTMLDialogElement>('#dialog'); dialog.showModal(); return new Promise(resolve => dialog.addEventListener('close', () => resolve(dialog.returnValue === 'confirm'), { once: true })); }
 $('#delete-note').onclick = async () => { if (await confirmDialog(`<h2>删除这份文档？</h2><p>「${escape(active().title || '未命名文档')}」将从浏览器中删除。你可以先导出留存。</p>`)) { workspace.notes = workspace.notes.filter(n => n.id !== workspace.activeId); if (!workspace.notes.length) createNote(); else selectNote(workspace.notes[0].id); notify('文档已删除'); } };
 $('#shortcuts').onclick = () => confirmDialog('<h2>写作快捷键</h2><p>⌘ / Ctrl + Shift + N　新建文档</p><p>⌘ / Ctrl + K　搜索文档</p><p>⌘ / Ctrl + S　保存至本地</p><p>⌘ / Ctrl + /　切换源码模式</p><p>⌘ / Ctrl + B　加粗</p><p>⌘ / Ctrl + I　斜体</p><p>Esc　退出专注模式</p>');
-$('#outline-list').onclick = event => { const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-heading]'); if (!button) return; if (sourceMode) $('#source-toggle').click(); const items = Array.from(document.querySelectorAll('.toastui-editor-ww-container .toastui-editor-contents h1, .toastui-editor-ww-container .toastui-editor-contents h2, .toastui-editor-ww-container .toastui-editor-contents h3, .toastui-editor-ww-container .toastui-editor-contents h4, .toastui-editor-ww-container .toastui-editor-contents h5, .toastui-editor-ww-container .toastui-editor-contents h6')); items[Number(button.dataset.heading)]?.scrollIntoView({ behavior: 'smooth', block: 'start' }); $('#outline-list .current')?.classList.remove('current'); button.classList.add('current'); };
+$('#outline-list').onclick = event => { const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-heading]'); if (!button) return; if (sourceMode) $('#source-toggle').click(); const items = Array.from(document.querySelectorAll('.active-editor .toastui-editor-ww-container .toastui-editor-contents :is(h1,h2,h3,h4,h5,h6)')); items[Number(button.dataset.heading)]?.scrollIntoView({ behavior: 'smooth', block: 'start' }); $('#outline-list .current')?.classList.remove('current'); button.classList.add('current'); };
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape') { if (focusMode) $('#focus').click(); $('#export-menu').hidden = true; }
   if (!(event.metaKey || event.ctrlKey)) return;

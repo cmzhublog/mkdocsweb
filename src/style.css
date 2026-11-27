@@ -8,3 +8,4 @@
 
 .search input,.import-button,.dropdown button{font-size:14px}.toastui-editor-contents{scroll-padding-top:24px}.toastui-editor-contents h1,.toastui-editor-contents h2,.toastui-editor-contents h3{scroll-margin-top:24px}
 .toastui-editor-dark .toastui-editor-toolbar-icons{background-position-y:3px!important;filter:invert(.85) grayscale(1)}
+.editor-instance{height:100%;min-height:0}.editor-instance[hidden]{display:none!important}
