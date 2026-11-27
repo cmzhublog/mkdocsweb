@@ -169,3 +169,44 @@ button:disabled { opacity:.5; }
 @media print { #app .flow-canvas svg { min-width:0!important; max-width:100%!important; } }
 
 #app .flow-canvas>svg { width:100%; max-width:100%; min-width:0; height:auto; }
+
+/* Unified Git review: file status plus old/new line numbers and exact +/- rows. */
+:root { --diff-add-bg:#e9f5ec; --diff-add-ink:#226238; --diff-delete-bg:#fbeceb; --diff-delete-ink:#a42b25; --diff-modify:#936111; --diff-hunk-bg:#eef2fb; }
+:root[data-theme=dark] { --diff-add-bg:#233e2d; --diff-add-ink:#a3e0b4; --diff-delete-bg:#492c2d; --diff-delete-ink:#f4b2ad; --diff-modify:#e5c073; --diff-hunk-bg:#2c3649; }
+.git-dialog { width:min(1000px,calc(100vw - 32px)); max-width:1000px; }
+#git-changes { max-height:55dvh; overflow:auto; }
+.git-review-summary { display:flex; align-items:center; gap:10px 14px; flex-wrap:wrap; padding:12px; border:1px solid var(--line); border-radius:6px; background:var(--sidebar); font-size:12px; }
+.git-review-summary strong { color:var(--ink); }
+.git-diff-add,.git-file-added .git-file-status,.git-review-summary .git-file-added { color:var(--diff-add-ink); }
+.git-diff-delete,.git-file-deleted .git-file-status,.git-review-summary .git-file-deleted { color:var(--diff-delete-ink); }
+.git-file-modified .git-file-status,.git-review-summary .git-file-modified { color:var(--diff-modify); }
+.git-diff-pending { color:var(--muted); font-size:11px; }
+.git-review .git-change { border:1px solid var(--line); border-radius:6px; margin-top:10px; overflow:hidden; }
+.git-review .git-change summary { padding:11px 12px; gap:8px; background:var(--sidebar); }
+.git-review .git-change summary:hover { background:var(--hover); }
+.git-file-status { font:600 12px/1.4 ui-monospace,monospace; flex:none; }
+.git-review .git-diff-path { flex:1; min-width:0; overflow-wrap:anywhere; color:var(--ink); }
+.git-file-deleted .git-diff-path { text-decoration:line-through; text-decoration-color:var(--diff-delete-ink); }
+.git-review .git-change-content { padding:0; }
+.git-diff-stat { flex:none; margin-left:auto; }
+.git-diff-counts { display:inline-flex; align-items:center; gap:9px; font:12px/1.5 ui-monospace,monospace; white-space:nowrap; }
+.git-diff-bar { display:flex; width:36px; height:7px; background:var(--line); border-radius:2px; overflow:hidden; }
+.git-diff-bar i:first-child { background:var(--diff-add-ink); }.git-diff-bar i:last-child { background:var(--diff-delete-ink); }
+.git-diff-scroll { overflow:auto; max-height:380px; }
+.git-diff-table { border-collapse:collapse; width:100%; font:12px/1.8 'SFMono-Regular',Consolas,monospace; color:var(--ink); tab-size:4; }
+.git-diff-table td { padding:0 8px; border:0; vertical-align:top; }
+.git-diff-table .git-diff-number { width:1%; min-width:35px; text-align:right; user-select:none; color:var(--muted); border-right:1px solid var(--line); }
+.git-diff-table .git-diff-sign { width:1%; min-width:22px; user-select:none; padding:0 5px; }
+.git-diff-code { white-space:pre; }
+.git-diff-table .git-diff-added { background:var(--diff-add-bg); color:var(--diff-add-ink); }
+.git-diff-table .git-diff-deleted { background:var(--diff-delete-bg); color:var(--diff-delete-ink); }
+.git-diff-table .git-diff-hunk { background:var(--diff-hunk-bg); color:var(--muted); }
+.git-diff-table .git-diff-hunk td { padding:5px 12px; white-space:pre; }
+.git-diff-note { color:var(--muted); font-style:italic; }
+.git-diff-message { padding:12px!important; font-size:12px; line-height:1.8; color:var(--muted); }
+.git-review .git-help { padding:0 12px; }
+.git-diff-retry { margin:0 12px 12px; border:1px solid var(--line); border-radius:4px; padding:5px 10px; font-size:12px; }
+@media(max-width:700px) { .git-review .git-change summary { flex-wrap:wrap; }.git-review .git-diff-path { flex-basis:calc(100% - 110px); }.git-diff-stat { margin-left:22px; }.git-diff-bar { display:none; } }
+.git-review-summary { position:sticky; top:0; z-index:2; }
+.git-diff-chevron { display:inline-flex; flex:none; width:10px; font:18px/18px system-ui; color:var(--muted); }
+.git-change[open]>summary>.git-diff-chevron { transform:rotate(90deg); }

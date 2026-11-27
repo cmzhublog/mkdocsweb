@@ -1,11 +1,11 @@
 import { api } from './api';
+import { changeReview } from './git-diff-view';
 import { imageReference } from './images';
 import type { Workspace } from './documents';
 import { applySnapshot, attachRepository, GitHubClient, GitDocumentLoader, gitChanges, parseCloneUrl, repositoryFiles, repositoryPath } from './github';
 import type { GitChange, GitRepository } from './git-types';
 
 const esc = (value: string) => value.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
-const labels = { added: '新增', modified: '修改', deleted: '删除' };
 
 export function createGitPanel(workspace: Workspace, hooks: {
   changed: (noteId?: string, folderId?: string, refreshEditors?: boolean) => void;
@@ -46,23 +46,7 @@ export function createGitPanel(workspace: Workspace, hooks: {
   }
   function renderPreview(repository: GitRepository, changes: GitChange[]) {
     const list = dialog.querySelector<HTMLElement>('#git-changes')!;
-    list.innerHTML = changes.length ? changes.map((change, index) => `<details class="git-change" data-change="${index}"><summary><span class="git-change-kind ${change.kind}">${labels[change.kind]}</span><span>${esc(change.path)}</span></summary><div class="git-change-content"></div></details>`).join('') : '<p class="git-help">没有需要提交的文档更改。</p>';
-    list.querySelectorAll<HTMLDetailsElement>('details').forEach(details => {
-      details.ontoggle = () => {
-        const container = details.querySelector<HTMLElement>('.git-change-content')!;
-        if (!details.open || container.childNodes.length) return;
-        const change = changes[Number(details.dataset.change)];
-        const before = repository.files.find(file => file.path === change.path)?.content;
-        for (const [label, content] of [['仓库原文', before], ['本次提交', change.content]] as const) {
-          if (content === undefined) continue;
-          const heading = document.createElement('p'); heading.textContent = label;
-          const pre = document.createElement('pre'); pre.textContent = content.slice(0, 12000) + (content.length > 12000 ? '\n…预览已截断' : '');
-          container.append(heading, pre);
-        }
-        if (change.base64 !== undefined) { const p = document.createElement('p'); p.textContent = `图片文件，约 ${Math.ceil(change.base64.length * 0.75 / 1024)} KiB，将使用二进制 blob 提交。`; container.append(p); }
-        if (!container.childNodes.length) container.textContent = change.kind === 'deleted' ? '仅删除此路径，未下载未打开文档的原文。' : '文档内容未修改，提交沿用仓库已有文件内容。';
-      };
-    });
+    list.replaceChildren(changeReview(repository, changes, sha => new GitHubClient(tokenFor(repository)).readFile(repository, sha)));
     dialog.querySelector<HTMLButtonElement>('#git-push')!.disabled = !changes.length;
   }
   function render() {
