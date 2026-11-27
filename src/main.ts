@@ -3,13 +3,13 @@ import '@toast-ui/editor/dist/toastui-editor.css';
 import '@toast-ui/editor/dist/theme/toastui-editor-dark.css';
 import '@toast-ui/editor/dist/i18n/zh-cn';
 import DOMPurify from 'dompurify';
-import { createIcons, Plus, Search, FolderOpen, Folder, FolderPlus, ChevronRight, Upload, HardDrive, Moon, PanelLeft, Maximize, Download, ChevronDown, FileText, Trash2, PenLine, CodeXml, ListTree, Sparkles, Keyboard, CheckCheck, CircleAlert, Sun } from 'lucide';
+import { createIcons, FilePlus, Search, FolderOpen, Folder, FolderPlus, ChevronRight, Upload, HardDrive, Moon, PanelLeft, Maximize, Download, ChevronDown, FileText, Trash2, PenLine, CodeXml, ListTree, Sparkles, Keyboard, CheckCheck, CircleAlert, Sun } from 'lucide';
 import { canMoveFolder, ensureFolderPath, mergeWorkspace, filename, headings, parseWorkspace, readingStats, STORAGE_KEY, type Workspace } from './documents';
 import { welcome } from './welcome';
 import { markdownShortcuts } from './markdown-shortcuts';
 import './style.css';
 
-const icons = { Plus, Search, FolderOpen, Folder, FolderPlus, ChevronRight, Upload, HardDrive, Moon, PanelLeft, Maximize, Download, ChevronDown, FileText, Trash2, PenLine, CodeXml, ListTree, Sparkles, Keyboard, CheckCheck, CircleAlert, Sun };
+const icons = { FilePlus, Search, FolderOpen, Folder, FolderPlus, ChevronRight, Upload, HardDrive, Moon, PanelLeft, Maximize, Download, ChevronDown, FileText, Trash2, PenLine, CodeXml, ListTree, Sparkles, Keyboard, CheckCheck, CircleAlert, Sun };
 const icon = (name: string, cls = '') => `<i data-lucide="${name}" class="${cls}"></i>`;
 const $ = <T extends HTMLElement = HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
@@ -43,9 +43,8 @@ document.documentElement.dataset.theme = theme;
 $('#app').innerHTML = `
   <aside class="sidebar" aria-label="文档导航">
     <a class="brand" href="./" aria-label="MkDocs Web 首页"><span class="brand-mark">m<span>k</span></span><span>MkDocs <b>Web</b></span></a>
-    <button class="new-note primary" id="new-note">${icon('plus')} 新建文档</button>
     <label class="search">${icon('search')}<input id="search" placeholder="搜索你的文档…" aria-label="搜索文档"/><kbd>⌘ K</kbd></label>
-    <div class="section-label tree-root" data-drop-root><span>文件</span><div class="tree-actions"><button id="new-folder" class="icon-button" aria-label="新建文件夹" title="新建文件夹">${icon('folder-plus')}</button><button id="import-folder" class="icon-button" aria-label="导入文件夹" title="导入文件夹">${icon('folder-open')}</button></div></div>
+    <div class="section-label tree-root" data-drop-root><span>文件</span><div class="tree-actions"><button id="new-note" class="icon-button" aria-label="新建文件" title="新建文件（⌘ / Ctrl + Shift + N）">${icon('file-plus')}</button><button id="new-folder" class="icon-button" aria-label="新建文件夹" title="新建文件夹">${icon('folder-plus')}</button><button id="import-folder" class="icon-button" aria-label="导入文件夹" title="导入文件夹">${icon('folder-open')}</button></div></div>
     <nav id="note-list" role="tree" aria-label="文档文件夹"></nav>
     <div class="sidebar-bottom"><button id="import" class="import-button">${icon('folder-open')} 导入 Markdown ${icon('upload')}</button><div class="sidebar-meta"><button id="theme" class="icon-button" aria-label="切换深色主题" title="切换深色主题">${icon('moon')}</button></div></div>
   </aside>

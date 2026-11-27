@@ -36,3 +36,5 @@
 #note-list .tree-drop-target,.tree-root.tree-drop-target{outline:1px dashed var(--green);outline-offset:-2px;background:var(--green-soft)}
 .sidebar-bottom{padding-top:10px}.sidebar-meta{justify-content:flex-end;margin-top:12px;padding:9px 18px}
 .folder-name-label{font-size:14px;display:block}.folder-name-label input{display:block;width:100%;margin-top:10px;padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:var(--paper);color:var(--ink);font:inherit}
+
+.sidebar>.search{margin-top:0}
