@@ -110,3 +110,27 @@
   .topbar .breadcrumb { flex:0 0 32px; max-width:32px; gap:0; }
   .topbar #crumb-title { display:none; }
 }
+
+/* Syntax colors follow token meaning across languages, in both editor modes. */
+:root { --syntax-comment:#6b7b75; --syntax-keyword:#a13caf; --syntax-string:#217448; --syntax-number:#a85313; --syntax-function:#2663a9; --syntax-operator:#566277; }
+:root[data-theme=dark] { --syntax-comment:#99aaa0; --syntax-keyword:#dca0ef; --syntax-string:#9ed49d; --syntax-number:#f0ba83; --syntax-function:#90bff1; --syntax-operator:#b5c3d5; }
+.toastui-editor-contents pre code { color:var(--ink)!important; background:transparent!important; font-size:13px; line-height:1.75; white-space:pre; }
+.toastui-editor-contents pre { overflow-x:auto!important; white-space:pre; border:1px solid var(--line); }
+.toastui-editor-contents .token.comment,.toastui-editor-contents .token.prolog,.toastui-editor-contents .token.doctype { color:var(--syntax-comment); font-style:italic; }
+.toastui-editor-contents .token.keyword,.toastui-editor-contents .token.atrule,.toastui-editor-contents .token.selector,.toastui-editor-contents .token.important { color:var(--syntax-keyword); }
+.toastui-editor-contents .token.string,.toastui-editor-contents .token.attr-value,.toastui-editor-contents .token.regex { color:var(--syntax-string); }
+.toastui-editor-contents .token.number,.toastui-editor-contents .token.boolean,.toastui-editor-contents .token.constant { color:var(--syntax-number); }
+.toastui-editor-contents .token.function,.toastui-editor-contents .token.class-name,.toastui-editor-contents .token.builtin,.toastui-editor-contents .token.property,.toastui-editor-contents .token.attr-name,.toastui-editor-contents .token.tag { color:var(--syntax-function); }
+.toastui-editor-contents .token.operator,.toastui-editor-contents .token.punctuation { color:var(--syntax-operator); }
+.toastui-editor-contents .token.variable { color:var(--syntax-number); }
+.code-block-shell { position:relative; margin:18px 0; border-radius:8px; background:var(--code); }
+.toastui-editor-contents .code-block-shell pre { margin:0!important; padding:48px 18px 18px!important; border-radius:8px; }
+.toastui-editor-ww-code-block-highlighting:after { top:9px; left:12px; right:auto; height:24px; max-width:calc(100% - 100px); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted); background-color:transparent; font:12px/21px system-ui; padding-top:0; }
+.code-preview-shell:before { content:attr(data-language); position:absolute; left:18px; top:12px; color:var(--muted); font:12px/22px system-ui; }
+.code-copy { position:absolute; right:10px; top:9px; padding:4px 10px; border:1px solid var(--line); border-radius:5px; background:var(--paper); color:var(--muted); font:12px/18px system-ui; z-index:1; }
+.code-copy:hover { color:var(--green); background:var(--green-soft); }
+@media print { .code-copy { display:none!important; } }
+.toastui-editor-contents pre.code-preview-shell { padding:48px 18px 18px!important; }
+.toastui-editor-contents .code-copy { color:var(--muted)!important; background:var(--paper)!important; }
+.toastui-editor-contents .code-copy:hover { color:var(--green)!important; background:var(--green-soft)!important; }
+.toastui-editor-dark .toastui-editor-ww-code-block-highlighting:after { color:var(--muted); background-color:transparent; }

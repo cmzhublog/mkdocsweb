@@ -11,9 +11,11 @@
   },
   "dependencies": {
     "@toast-ui/editor": "3.2.3",
+    "@toast-ui/editor-plugin-code-syntax-highlight": "^3.1.0",
     "dompurify": "^3.3.0",
     "fflate": "^0.8.3",
     "lucide": "^0.468.0",
+    "prismjs": "^1.30.0",
     "prosemirror-history": "^1.5.2"
   },
   "overrides": {
@@ -22,6 +24,7 @@
     }
   },
   "devDependencies": {
+    "@types/prismjs": "^1.26.6",
     "prosemirror-inputrules": "^1.7.0",
     "prosemirror-keymap": "^1.2.3",
     "prosemirror-model": "^1.25.13",
