@@ -17,6 +17,9 @@ Prism.languages.Python = Prism.languages.python;
 Prism.languages.Nginx = Prism.languages.nginx;
 Prism.languages.Bash = Prism.languages.bash;
 Prism.languages.conf = Prism.languages.ini;
+// Also expose diagram languages in the code block language picker.
+Prism.languages.flow = {};
+Prism.languages.flowchart = Prism.languages.flow;
 
 export { Prism };
 export function highlightCode(code: string, language: string) {

@@ -16,6 +16,8 @@ import { documentImages } from './image-editor';
 import { documentArchive } from './image-export';
 import { createEditorToolbar } from './editor-toolbar';
 import { codeBlocks, previewCodeCopy } from './code-blocks';
+import { flowSVG } from './flow-diagrams';
+import { isFlowLanguage } from './flow-source';
 import './style.css';
 import './ui-polish.css';
 
@@ -237,7 +239,11 @@ async function exportNote(format: string) {
   if (format === 'print') { if (sourceMode) $('#source-toggle').click(); window.print(); return; }
   if (format === 'md') download(active().content, `${filename(active().title)}.md`, 'text/markdown;charset=utf-8');
   else { const fragment = document.createElement('div'); fragment.innerHTML = DOMPurify.sanitize(editor.getHTML());
+    fragment.querySelectorAll('.code-copy, .flow-source-toggle, .flow-canvas').forEach(control => control.remove());
     try {
+      for (const code of fragment.querySelectorAll('pre > code[data-language]')) {
+        if (isFlowLanguage(code.getAttribute('data-language') ?? '')) { const diagram = document.createElement('div'); diagram.style.overflowX = 'auto'; diagram.innerHTML = await flowSVG(code.textContent ?? ''); code.parentElement!.replaceWith(diagram); }
+      }
       for (const image of fragment.querySelectorAll('img')) {
         const src = image.getAttribute('src') ?? '';
         if (src.startsWith('/api/images/')) { const response = await fetch(src, { credentials: 'same-origin', cache: 'no-store' }); if (!response.ok) throw new Error('图片读取失败，未导出不完整网页。'); const bytes = new Uint8Array(await response.arrayBuffer()); const mime = imageMime(bytes); if (!mime) throw new Error('图片格式无效。'); image.src = `data:${mime};base64,${encodeImage(bytes)}`; }

@@ -1,4 +1,6 @@
 import { createElement, Copy, Check, X } from 'lucide';
+import { isFlowLanguage } from './flow-source.ts';
+import { flowPreview } from './flow-diagrams';
 import type { PluginContext, PluginInfo } from '@toast-ui/editor';
 import codeSyntaxHighlight from '@toast-ui/editor-plugin-code-syntax-highlight';
 import { Prism, highlightCode } from './code-highlighting.ts';
@@ -77,10 +79,13 @@ export function codeBlocks(context: PluginContext): PluginInfo {
     dom.classList.add('code-block-shell');
     const copy = copyButton(() => view.contentDOM?.textContent ?? '');
     dom.append(copy.button);
+    const flow = isFlowLanguage(args[0].attrs.language ?? '') ? flowPreview(dom, () => view.contentDOM?.textContent ?? '', true, !args[0].textContent.trim()) : undefined;
+    const update = view.update?.bind(view);
+    view.update = (...params) => { const result = update?.(...params) ?? false; if (result) flow?.refresh(); return result; };
     const ignore = view.ignoreMutation?.bind(view);
-    view.ignoreMutation = mutation => copy.button.contains(mutation.target) || mutation.target === copy.button || (ignore?.(mutation) ?? false);
+    view.ignoreMutation = mutation => (flow?.owns(mutation.target) ?? false) || (mutation.type === 'attributes' && mutation.target === dom) || copy.button.contains(mutation.target) || mutation.target === copy.button || (ignore?.(mutation) ?? false);
     const destroy = view.destroy?.bind(view);
-    view.destroy = () => { copy.destroy(); destroy?.(); };
+    view.destroy = () => { flow?.destroy(); copy.destroy(); destroy?.(); };
     return view;
   };
   return plugin;
@@ -88,19 +93,21 @@ export function codeBlocks(context: PluginContext): PluginInfo {
 
 /** Markdown preview is read-only; attach controls without changing its rendered code. */
 export function previewCodeCopy(host: HTMLElement) {
-  const copies = new Map<HTMLElement, ReturnType<typeof copyButton>>();
+  const copies = new Map<HTMLElement, { copy: ReturnType<typeof copyButton>; flow?: ReturnType<typeof flowPreview> }>();
   const refresh = () => {
-    for (const [shell, copy] of copies) if (!host.contains(shell)) { copy.destroy(); copies.delete(shell); }
+    for (const [shell, controls] of copies) if (!host.contains(shell) || !shell.querySelector('.code-copy')) { controls.flow?.destroy(); controls.copy.destroy(); copies.delete(shell); }
     for (const pre of host.querySelectorAll<HTMLElement>('.toastui-editor-md-preview pre')) {
-      if (pre.querySelector('.code-copy')) continue;
+      if (pre.querySelector('.code-copy')) { copies.get(pre)?.flow?.refresh(); continue; }
       pre.classList.add('code-block-shell', 'code-preview-shell');
       pre.dataset.language = pre.querySelector('code')?.getAttribute('data-language') || 'text';
       const copy = copyButton(() => pre.querySelector('code')?.textContent ?? '');
-      pre.append(copy.button); copies.set(pre, copy);
+      pre.append(copy.button);
+      const flow = isFlowLanguage(pre.dataset.language) ? flowPreview(pre, () => pre.querySelector('code')?.textContent ?? '', false) : undefined;
+      copies.set(pre, { copy, flow });
     }
   };
   const observer = new MutationObserver(refresh);
   observer.observe(host, { childList: true, subtree: true });
   refresh();
-  return () => { observer.disconnect(); for (const copy of copies.values()) copy.destroy(); copies.clear(); };
+  return () => { observer.disconnect(); for (const controls of copies.values()) { controls.flow?.destroy(); controls.copy.destroy(); } copies.clear(); };
 }

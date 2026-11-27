@@ -9,6 +9,7 @@
 - 所见即所得编辑与 Markdown 源码 / 预览切换
 - 直接输入 Markdown 自动排版：标题、代码、加粗、斜体、列表、引用等
 - 标题、加粗、斜体、引用、列表、任务列表、表格、链接、代码块
+- `flow` / `flowchart` 代码块渲染流程图，支持源码编辑、复制、主题适配和 HTML 图形导出
 - 多文档创建、重命名、删除与全文搜索
 - 精简文件夹树、嵌套目录、折叠展开、目录导入和拖动整理
 - 账号内自动保存、刷新恢复、版本冲突保护和保存失败提示
@@ -212,3 +213,23 @@ go vet ./...
 Go + PostgreSQL + TypeScript + Vite + [TOAST UI Editor](https://github.com/nhn/tui.editor) + [DOMPurify](https://github.com/cure53/DOMPurify) + [Lucide](https://lucide.dev/)。本项目使用 MIT 许可证，依赖保留各自许可证。
 
 TOAST UI Editor 当前 npm 版本已标记为不再维护，首版使用其成熟的 Markdown / 富文本编辑能力，并通过 npm overrides 将其旧 DOMPurify 依赖统一至当前修复版本。锁文件固定经过验证的依赖；后续升级前需复测中文输入、Markdown 往返与粘贴清洗，长期迭代建议迁移至持续维护的编辑器内核。
+
+
+## Flow 流程图
+
+使用 `flow` 或 `flowchart` 代码围栏：
+
+```flow
+st=>start: 开始
+op=>operation: 执行任务
+cond=>condition: 是否完成？
+e=>end: 结束
+
+st->op->cond
+cond(yes)->e
+cond(no)->op
+```
+
+即时编辑和 Markdown 预览显示流程图；点击“编辑源码”后修改，再点击“预览流程图”。复制按钮复制原始代码，Markdown 保存和 Git 提交仍保留原文；HTML 导出包含内联 SVG，打印可输出当前图形。语法错误时会提示并保留源码。较宽图形可横向滚动，颜色跟随主题。
+
+这是 flowchart.js 语法，和 Mermaid 不同。未包含定义或连线的内容无法渲染；独立文字行属于前一个节点的续行。渲染在浏览器本地完成，不向外部绘图服务发送文档。

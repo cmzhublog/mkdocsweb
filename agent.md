@@ -52,6 +52,15 @@
 - 已修复上游插件对未知语言代码未转义 HTML 的行为。不要恢复成直接输出原始代码 HTML。
 - 预览复制按钮直接附加在 `pre` 中，不额外包裹 `pre`，避免破坏编辑器增量预览的 DOM 结构。
 
+### Flow 流程图
+
+- `flow` / `flowchart` 围栏使用本地按需加载的 flowchart.js 渲染，支持 start/end、operation、condition、inputoutput、subroutine、分支方向及回路。
+- 即时编辑默认显示 SVG，点击“编辑源码”修改，点击“预览流程图”恢复图形；Markdown 预览也显示图形。
+- 保存、Git、Markdown 导出和复制保持原始流程图代码；HTML 导出转换成内联 SVG，打印显示当前图形。
+- 渲染结果用 DOMPurify 清洗，禁用链接、外部图片及事件属性，只保留箭头所需的本地 SVG 引用；源码大小与节点数量有保护上限。
+- 错误时显示提示并保留源码。语法中的独立文本行是前一节点的续行，不静默删改；例如样例 `feat01` 会进入结束节点。
+- Mermaid 仍不包含在本次支持范围，不把 Mermaid 与 flowchart.js 语法混用。
+
 ### 图片与 assets 目录
 
 - 已明确确认：`test.md` 的图片放在同级 `test.assets/`；例如 `docs/test.md` 对应 `docs/test.assets/`。
@@ -102,6 +111,7 @@
 | `src/editor-toolbar.ts` | 原生工具栏复用、单行滚动、弹层和提示定位 |
 | `src/markdown-shortcuts.ts` | Markdown 输入规则及回车转换 |
 | `src/code-highlighting.ts` | Prism 语言注册、安全代码高亮 |
+| `src/flow-source.ts`、`src/flow-diagrams.ts` | Flow 语法检查、安全 SVG 渲染及源码切换 |
 | `src/code-blocks.ts` | 高亮插件适配、代码复制、预览控件及清理 |
 | `src/style.css`、`src/ui-polish.css` | 布局、字体、响应式、主题、语法色及界面视觉细节 |
 | `src/documents.ts`、`src/autosave.ts` | 工作区与目录模型、保存队列和冲突处理 |
