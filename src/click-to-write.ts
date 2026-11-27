@@ -21,9 +21,29 @@ export function lineAtBoundary(state: EditorState, position: number) {
   return tr.setSelection(TextSelection.create(tr.doc, cursor)).scrollIntoView();
 }
 
+/** Only the empty first top-level paragraph can cross back into the title. */
+export function removeEmptyFirstLine(state: EditorState) {
+  const { $from, empty } = state.selection;
+  if (!empty || $from.depth !== 1 || $from.parent.type.name !== 'paragraph' || $from.parent.content.size !== 0 || $from.before() !== 0) return null;
+  // ProseMirror keeps a placeholder paragraph when the document would be empty.
+  return closeHistory(state.tr).delete(0, $from.parent.nodeSize).scrollIntoView();
+}
+
 /** Whitespace anywhere in the writing pane can start a line in rich editing. */
 export function clickToWrite({ pmState }: Pick<PluginContext, 'pmState'>) {
   return { wysiwygPlugins: [() => new pmState.Plugin({
+    props: {
+      handleKeyDown(view, event) {
+        if (event.key !== 'Backspace' || event.isComposing || view.composing || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || !view.editable) return false;
+        const title = view.dom.closest('.writing-pane')?.querySelector<HTMLInputElement>('#doc-title');
+        if (!title || title.disabled || title.readOnly) return false;
+        const tr = removeEmptyFirstLine(view.state);
+        if (!tr) return false;
+        view.dispatch(tr);
+        title.focus(); title.setSelectionRange(title.value.length, title.value.length);
+        return true;
+      },
+    },
     view(view) {
       const pane = view.dom.closest<HTMLElement>('.writing-pane') ?? document.querySelector<HTMLElement>('.writing-pane');
       const click = (event: MouseEvent) => {

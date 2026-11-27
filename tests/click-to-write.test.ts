@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Schema } from 'prosemirror-model';
-import { EditorState } from 'prosemirror-state';
+import { EditorState, TextSelection } from 'prosemirror-state';
 import { history, undo } from 'prosemirror-history';
-import { lineAtBoundary } from '../src/click-to-write.ts';
+import { lineAtBoundary, removeEmptyFirstLine } from '../src/click-to-write.ts';
 
 const schema = new Schema({nodes:{
   doc:{content:'block+'},paragraph:{content:'text*',group:'block'},
@@ -48,4 +48,33 @@ test('nonempty text is preserved when inserting between blocks; invalid boundari
   assert.equal(next.doc.child(1).type.name,'paragraph');
   assert.equal(lineAtBoundary(initial,-1),null);
   assert.equal(lineAtBoundary(initial,initial.doc.content.size+1),null);
+});
+
+
+test('backspace removes only the empty first line and preserves the following code', () => {
+  const initial=state([line(),code(),line('正文')]);
+  const next=initial.apply(removeEmptyFirstLine(initial)!);
+  assert.equal(next.doc.childCount,2);
+  assert.equal(next.doc.firstChild!.type.name,'codeBlock');
+  assert.equal(next.doc.firstChild!.textContent,initial.doc.child(1).textContent);
+  assert.equal(next.doc.lastChild!.textContent,'正文');
+  assert.ok(undo(next,tr=>assert.ok(next.apply(tr).doc.eq(initial.doc))));
+});
+
+test('a wholly empty body keeps the schema placeholder without adding content', () => {
+  const initial=state([line()]);
+  const next=initial.apply(removeEmptyFirstLine(initial)!);
+  assert.equal(next.doc.childCount,1);
+  assert.equal(next.doc.firstChild!.type.name,'paragraph');
+  assert.equal(next.doc.textContent,'');
+});
+
+test('text, non-first lines, nested/selected content do not trigger title navigation', () => {
+  assert.equal(removeEmptyFirstLine(state([line('文字'),code()])),null);
+  assert.equal(removeEmptyFirstLine(state([code(),line()])),null);
+  const initial=state([line(),line(),code()]);
+  const second=initial.apply(initial.tr.setSelection(TextSelection.create(initial.doc,3)));
+  assert.equal(removeEmptyFirstLine(second),null);
+  const selected=initial.apply(initial.tr.setSelection(TextSelection.create(initial.doc,1,3)));
+  assert.equal(removeEmptyFirstLine(selected),null);
 });
