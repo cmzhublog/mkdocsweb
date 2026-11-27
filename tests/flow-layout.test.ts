@@ -43,3 +43,15 @@ test('long Chinese, URLs and emoji labels fit two lines without changing full te
   }
   assert.deepEqual(flowLabel('开始'),['开始']);
 });
+
+test('wide author-directed flow reflows vertically at editor and phone widths', async () => {
+  const {fitFlowLayout}=await import('../src/flow-layout.ts');
+  const engine=new ELK();
+  for (const width of [648,310,240]) {
+    const layout=await fitFlowLayout(graph,engine,width);
+    assert.ok(layout.width!<=width,`layout width ${layout.width} fits ${width}`);
+    assert.ok(layout.height!>layout.width!,'height grows instead of horizontal scrolling');
+    assert.equal(layout.children!.length,graph.nodes.length);
+    assert.equal(layout.edges!.filter(edge=>edge.id.startsWith('edge-')).length,graph.edges.length);
+  }
+});
