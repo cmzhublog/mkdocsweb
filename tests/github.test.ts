@@ -141,7 +141,7 @@ test('远端在提交期间发生变化时不更新本地基线、不强推', as
   assert.equal(r.headSha, sha(1));
   assert.ok(m.calls.filter(c => c.method === 'PATCH').every(c => c.body.force === false));
 });
-test('拒绝截断文件树和超限文档，避免不完整导入', async () => {
+test('文件树被截断时仍拒绝不完整导入', async () => {
   const m = mock(call => {
     if (call.path === '/repos/demo/notes') return { default_branch: 'main' };
     if (call.path.includes('/git/ref/')) return { object: { sha: sha(1) } };
@@ -150,14 +150,34 @@ test('拒绝截断文件树和超限文档，避免不完整导入', async () =>
   });
   await assert.rejects(new GitHubClient('', m.request).clone('https://github.com/demo/notes.git'), /完整文件树/);
   assert.equal(m.calls.filter(c => c.path.includes('/git/blobs/')).length, 0);
-  const oversized = mock(call => {
+});
+function importFixture(entries: { path: string; size: number }[], content = '内容') {
+  return mock(call => {
     if (call.path === '/repos/demo/notes') return { default_branch: 'main' };
     if (call.path.includes('/git/ref/')) return { object: { sha: sha(1) } };
     if (call.path.includes('/git/commits/')) return { tree: { sha: sha(2) } };
-    return { truncated: false, tree: [{ path: 'large.md', type: 'blob', mode: '100644', sha: sha(3), size: 3 * 1024 * 1024 }] };
+    if (call.path.includes('/git/blobs/')) return { encoding: 'base64', content: Buffer.from(content).toString('base64') };
+    return { truncated: false, tree: entries.map((entry, index) => ({ ...entry, type: 'blob', mode: '100644', sha: sha(index + 3) })) };
   });
-  await assert.rejects(new GitHubClient('', oversized.request).clone('https://github.com/demo/notes.git'), /2 MB/);
-  assert.equal(oversized.calls.filter(c => c.path.includes('/git/blobs/')).length, 0);
+}
+test('可以导入超过 300 份文档，仍保留完整目录清单', async () => {
+  const m = importFixture(Array.from({ length: 301 }, (_, index) => ({ path: `docs/${index}.md`, size: 6 })));
+  const result = await new GitHubClient('', m.request).clone('https://github.com/demo/notes.git');
+  assert.equal(result.files.length, 301);
+  assert.equal(result.allPaths.length, 301);
+});
+test('单份文档超过 2 MB 可完整解码并导入', async () => {
+  const content = 'x'.repeat(2 * 1024 * 1024 + 1);
+  const m = importFixture([{ path: 'large.md', size: content.length }], content);
+  const result = await new GitHubClient('', m.request).clone('https://github.com/demo/notes.git');
+  assert.equal(result.files[0].content, content);
+});
+test('目录中文档总计超过 8 MB 不再被应用拦截', async () => {
+  // The old guard used GitHub's size metadata before requesting any file content.
+  const m = importFixture(Array.from({ length: 5 }, (_, index) => ({ path: `${index}.md`, size: 1900000 })));
+  const result = await new GitHubClient('', m.request).clone('https://github.com/demo/notes.git');
+  assert.equal(result.files.length, 5);
+  assert.equal(m.calls.filter(c => c.path.includes('/git/blobs/')).length, 5);
 });
 test('更新分支后响应丢失，通过只读核实避免重复提交', async () => {
   const w = workspace(); const r = attachRepository(w, snapshot());

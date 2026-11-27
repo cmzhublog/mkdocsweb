@@ -143,7 +143,6 @@ export class GitHubClient {
     const entries = tree.tree.filter(e => e.type === 'blob');
     const docs = entries.filter(e => isDocument(e.path) && ['100644', '100755'].includes(e.mode));
     if (docs.some(e => e.path.split('/').some(part => !validSegment(part)))) throw new Error('仓库中有当前编辑器不支持的文件或目录名称，请先检查特殊路径字符。');
-    if (docs.length > 300 || docs.some(e => (e.size ?? 0) > 2 * 1024 * 1024) || docs.reduce((n, e) => n + (e.size ?? 0), 0) > 8 * 1024 * 1024) throw new Error('首版每个仓库最多导入 300 份文档，单份不超过 2 MB，总计不超过 8 MB。');
     const files: GitFile[] = [];
     // Bounded concurrency avoids flooding the API or exhausting unauthenticated quotas at once.
     let next = 0;
