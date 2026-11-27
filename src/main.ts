@@ -3,13 +3,13 @@ import '@toast-ui/editor/dist/toastui-editor.css';
 import '@toast-ui/editor/dist/theme/toastui-editor-dark.css';
 import '@toast-ui/editor/dist/i18n/zh-cn';
 import DOMPurify from 'dompurify';
-import { createIcons, Plus, Search, FolderOpen, Upload, HardDrive, Moon, PanelLeft, Maximize, Download, ChevronDown, FileText, Trash2, PenLine, CodeXml, ListTree, Sparkles, Keyboard, CheckCheck, CircleAlert, Sun } from 'lucide';
-import { filename, headings, parseWorkspace, readingStats, STORAGE_KEY, type Workspace } from './documents';
+import { createIcons, Plus, Search, FolderOpen, Folder, FolderPlus, ChevronRight, Upload, HardDrive, Moon, PanelLeft, Maximize, Download, ChevronDown, FileText, Trash2, PenLine, CodeXml, ListTree, Sparkles, Keyboard, CheckCheck, CircleAlert, Sun } from 'lucide';
+import { canMoveFolder, ensureFolderPath, mergeWorkspace, filename, headings, parseWorkspace, readingStats, STORAGE_KEY, type Workspace } from './documents';
 import { welcome } from './welcome';
 import { markdownShortcuts } from './markdown-shortcuts';
 import './style.css';
 
-const icons = { Plus, Search, FolderOpen, Upload, HardDrive, Moon, PanelLeft, Maximize, Download, ChevronDown, FileText, Trash2, PenLine, CodeXml, ListTree, Sparkles, Keyboard, CheckCheck, CircleAlert, Sun };
+const icons = { Plus, Search, FolderOpen, Folder, FolderPlus, ChevronRight, Upload, HardDrive, Moon, PanelLeft, Maximize, Download, ChevronDown, FileText, Trash2, PenLine, CodeXml, ListTree, Sparkles, Keyboard, CheckCheck, CircleAlert, Sun };
 const icon = (name: string, cls = '') => `<i data-lucide="${name}" class="${cls}"></i>`;
 const $ = <T extends HTMLElement = HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
@@ -21,7 +21,7 @@ try {
   if (stored && !restored) { storageHealthy = false; }
   workspace = restored ?? initialWorkspace();
 } catch { storageHealthy = false; workspace = initialWorkspace(); }
-function initialWorkspace(): Workspace { return { activeId: 'welcome', notes: [{ id: 'welcome', title: '欢迎来到你的写作空间', content: welcome, updatedAt: Date.now() }] }; }
+function initialWorkspace(): Workspace { return { folders: [], activeId: 'welcome', notes: [{ id: 'welcome', title: '欢迎来到你的写作空间', content: welcome, updatedAt: Date.now() }] }; }
 const active = () => workspace.notes.find(n => n.id === workspace.activeId)!;
 const fontOptions = [
   { id: 'songti', label: '宋体', family: '"SimSun", "宋体", "Songti SC", "STSong", serif' },
@@ -33,6 +33,7 @@ const fontOptions = [
 let documentFont = fontOptions[0];
 try { documentFont = fontOptions.find(font => font.id === localStorage.getItem('mkdocsweb.font')) ?? fontOptions[0]; } catch {}
 document.documentElement.style.setProperty('--document-font', documentFont.family);
+let selectedFolderId: string | null = active().folderId ?? null;
 let sourceMode = false;
 let focusMode = false;
 let theme = 'light';
@@ -42,17 +43,17 @@ document.documentElement.dataset.theme = theme;
 $('#app').innerHTML = `
   <aside class="sidebar" aria-label="文档导航">
     <a class="brand" href="./" aria-label="MkDocs Web 首页"><span class="brand-mark">m<span>k</span></span><span>MkDocs <b>Web</b></span></a>
-    <button class="new-note primary" id="new-note">${icon('plus')} 新建文档 <kbd>⇧ ⌘ N</kbd></button>
+    <button class="new-note primary" id="new-note">${icon('plus')} 新建文档</button>
     <label class="search">${icon('search')}<input id="search" placeholder="搜索你的文档…" aria-label="搜索文档"/><kbd>⌘ K</kbd></label>
-    <div class="section-label"><span>我的文档</span><span id="note-count"></span></div>
-    <nav id="note-list" aria-label="我的文档"></nav>
-    <div class="sidebar-bottom"><button id="import" class="import-button">${icon('folder-open')} 导入 Markdown ${icon('upload')}</button><div class="local-note">${icon('hard-drive')} 本地存储，安心写作</div><div class="sidebar-meta"><span>一个属于你的写作空间</span><button id="theme" class="icon-button" aria-label="切换深色主题" title="切换深色主题">${icon('moon')}</button></div></div>
+    <div class="section-label tree-root" data-drop-root><span>文件</span><div class="tree-actions"><button id="new-folder" class="icon-button" aria-label="新建文件夹" title="新建文件夹">${icon('folder-plus')}</button><button id="import-folder" class="icon-button" aria-label="导入文件夹" title="导入文件夹">${icon('folder-open')}</button></div></div>
+    <nav id="note-list" role="tree" aria-label="文档文件夹"></nav>
+    <div class="sidebar-bottom"><button id="import" class="import-button">${icon('folder-open')} 导入 Markdown ${icon('upload')}</button><div class="sidebar-meta"><button id="theme" class="icon-button" aria-label="切换深色主题" title="切换深色主题">${icon('moon')}</button></div></div>
   </aside>
   <main class="main">
     <header class="topbar"><div class="breadcrumb"><button id="sidebar-toggle" class="icon-button" aria-label="显示或隐藏文档列表">${icon('panel-left')}</button><span class="crumb-parent">我的文档</span><span class="slash">/</span><span id="crumb-title"></span></div><div class="top-actions"><span id="save-state" role="status"></span><button id="focus" class="text-button">${icon('maximize')}<span>专注</span></button><div class="export-wrap"><button id="export" class="export-button" aria-expanded="false">${icon('download')} 导出 ${icon('chevron-down')}</button><div id="export-menu" class="dropdown" hidden><button data-export="md">Markdown (.md)</button><button data-export="html">网页 (.html)</button><button data-export="print">打印 / 存为 PDF</button><button data-export="backup">备份所有文档 (.json)</button><button data-export="restore">恢复文档备份</button></div></div></div></header>
     <div class="work-area"><section class="writing-pane" aria-label="写作区"><div class="document-heading"><div class="eyebrow">你的文字，值得被认真对待</div><div class="title-row"><input id="doc-title" aria-label="文档标题" maxlength="100"/><button id="delete-note" class="icon-button" title="删除文档" aria-label="删除当前文档">${icon('trash-2')}</button></div><div class="document-meta">${icon('file-text')}<span>Markdown 文档</span><span class="meta-dot">·</span><span id="updated-at"></span></div></div><div class="editor-bar"><span class="editor-bar-label">${icon('pen-line')} 开始书写</span><div class="writing-options"><label class="font-picker"><span>字体</span><select id="font-select" aria-label="文档字体" title="使用设备已安装的字体">${fontOptions.map(font => `<option value="${font.id}" ${font.id === documentFont.id ? 'selected' : ''}>${font.label}</option>`).join('')}</select>${icon('chevron-down')}</label><button id="source-toggle" class="mode-toggle" aria-pressed="false">${icon('code-xml')}<span>源码模式</span></button></div></div><div id="editor"></div></section><aside class="outline" aria-label="文档大纲"><div class="outline-heading">${icon('list-tree')} 文档大纲</div><nav id="outline-list"></nav><div class="outline-tip">${icon('sparkles')}<p>让文字回归文字。<br/>让思绪自由流淌。</p><span>WRITE SOMETHING GOOD.</span></div></aside></div>
     <footer class="statusbar"><div><span class="status-dot"></span><span id="footer-state">所有更改已保存至本地</span></div><div><span id="word-count"></span><span class="status-divider">|</span><span id="read-time"></span><span class="status-divider">|</span><span>UTF-8</span><span class="status-divider">|</span><button id="shortcuts">${icon('keyboard')} 快捷键</button></div></footer>
-  </main><input id="file-input" type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" multiple hidden/><input id="backup-input" type="file" accept=".json,application/json" hidden/><div id="toast" role="status" hidden></div><dialog id="dialog"><form method="dialog"><div id="dialog-content"></div><div class="dialog-actions"><button value="cancel">取消</button><button value="confirm" class="primary">确定</button></div></form></dialog>`;
+  </main><input id="file-input" type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" multiple hidden/><input id="directory-input" type="file" webkitdirectory multiple hidden/><input id="backup-input" type="file" accept=".json,application/json" hidden/><div id="toast" role="status" hidden></div><dialog id="dialog"><form method="dialog"><div id="dialog-content"></div><div class="dialog-actions"><button value="cancel">取消</button><button value="confirm" class="primary">确定</button></div></form></dialog>`;
 
 const editors = new Map<string, { instance: Editor; host: HTMLDivElement }>();
 function makeEditor(content: string) {
@@ -94,18 +95,37 @@ function renderStats() {
   $('#updated-at').textContent = `编辑于 ${new Date(active().updatedAt).toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })}`;
 }
 function renderNotes() {
-  const term = $<HTMLInputElement>('#search').value.toLocaleLowerCase();
+  const term = $<HTMLInputElement>('#search').value.trim().toLocaleLowerCase();
+  const visibleFolders = new Set<string>();
   const notes = workspace.notes.filter(n => `${n.title}\n${n.content}`.toLocaleLowerCase().includes(term));
-  $('#note-count').textContent = String(workspace.notes.length).padStart(2, '0');
-  $('#note-list').innerHTML = notes.map(n => `<button class="note-item ${n.id === workspace.activeId ? 'active' : ''}" data-id="${escape(n.id)}" ${n.id === workspace.activeId ? 'aria-current="page"' : ''}>${icon('file-text')}<span><strong>${escape(n.title || '未命名文档')}</strong><small>${n.content.replace(/[#*>`_\[\]\n-]/g, ' ').trim().slice(0, 34) ? escape(n.content.replace(/[#*>`_\[\]\n-]/g, ' ').trim().slice(0, 34)) : '从这里，写下第一个想法…'}</small></span></button>`).join('') || '<p class="empty-search">没有找到匹配的文档</p>';
+  if (term) {
+    const reveal = (id: string | null | undefined) => {
+      while (id) { visibleFolders.add(id); id = workspace.folders.find(f => f.id === id)?.parentId; }
+    };
+    notes.forEach(n => reveal(n.folderId));
+    workspace.folders.filter(f => f.name.toLocaleLowerCase().includes(term)).forEach(f => reveal(f.id));
+  }
+  const renderBranch = (parentId: string | null, depth: number): string => {
+    const folders = workspace.folders.filter(f => f.parentId === parentId && (!term || visibleFolders.has(f.id)));
+    const files = notes.filter(n => (n.folderId ?? null) === parentId);
+    return folders.map(f => {
+      const expanded = !!term || !f.collapsed;
+      return `<div role="none"><button role="treeitem" aria-expanded="${expanded}" aria-level="${depth + 1}" class="folder-row ${selectedFolderId === f.id ? 'selected-folder' : ''}" data-folder="${escape(f.id)}" draggable="true" title="${escape(f.name)}（双击重命名）" style="--depth:${depth}">${icon(expanded ? 'chevron-down' : 'chevron-right', 'tree-chevron')}${icon(expanded ? 'folder-open' : 'folder')}<span class="tree-title">${escape(f.name)}</span></button>${expanded ? `<div role="group">${renderBranch(f.id, depth + 1)}</div>` : ''}</div>`;
+    }).join('') + files.map(n => `<button role="treeitem" aria-level="${depth + 1}" aria-selected="${n.id === workspace.activeId}" class="note-item ${n.id === workspace.activeId ? 'active' : ''}" data-id="${escape(n.id)}" draggable="true" title="${escape(n.title || '未命名文档')}" style="--depth:${depth}">${icon('file-text')}<span class="tree-title">${escape(n.title || '未命名文档')}</span></button>`).join('');
+  };
+  $('#note-list').innerHTML = renderBranch(null, 0) || '<p class="empty-search">没有找到文档</p>';
   refreshIcons();
 }
+function revealFolder(id: string | null) {
+  while (id) { const folder = workspace.folders.find(f => f.id === id); if (!folder) break; folder.collapsed = false; id = folder.parentId; }
+}
+
 function renderOutline() {
   const list = headings(active().content);
   $('#outline-list').innerHTML = list.map((h, index) => `<button data-heading="${index}" style="--level:${Math.min(h.level, 4)}" class="${index === 0 ? 'current' : ''}">${escape(h.text)}</button>`).join('') || '<p class="empty-search">添加标题后，大纲将显示在这里</p>';
 }
-function selectNote(id: string) {
-  persist(); workspace.activeId = id; loading = true;
+function selectNote(id: string, expandFolders = true) {
+  persist(); workspace.activeId = id; selectedFolderId = active().folderId ?? null; if (expandFolders) revealFolder(selectedFolderId); loading = true;
   // Keep one editor per opened note: its undo history and delayed UI callbacks stay isolated.
   const existing = editors.get(id);
   if (existing) editor = existing.instance;
@@ -120,8 +140,8 @@ function selectNote(id: string) {
   document.title = `${active().title || '未命名文档'} · MkDocs Web`;
   renderNotes(); renderStats(); renderOutline(); persist();
 }
-function createNote(content = '', title = '未命名文档') {
-  const note = { id: crypto.randomUUID(), title, content, updatedAt: Date.now() };
+function createNote(content = '', title = '未命名文档', folderId = selectedFolderId) {
+  const note = { id: crypto.randomUUID(), title, content, folderId, updatedAt: Date.now() };
   workspace.notes.unshift(note); selectNote(note.id); $<HTMLInputElement>('#doc-title').focus(); $<HTMLInputElement>('#doc-title').select();
 }
 function download(content: string, name: string, type: string) { const url = URL.createObjectURL(new Blob([content], { type })); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
@@ -140,7 +160,107 @@ $<HTMLSelectElement>('#font-select').onchange = event => {
 };
 $('#new-note').onclick = () => createNote();
 $('#search').oninput = renderNotes;
-$('#note-list').onclick = event => { const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-id]'); if (button) selectNote(button.dataset.id!); };
+$('#note-list').onclick = event => {
+  const target = event.target as HTMLElement;
+  const file = target.closest<HTMLButtonElement>('[data-id]');
+  if (file) { selectNote(file.dataset.id!); return; }
+  const row = target.closest<HTMLButtonElement>('[data-folder]');
+  if (row) {
+    const folder = workspace.folders.find(f => f.id === row.dataset.folder)!;
+    selectedFolderId = folder.id; folder.collapsed = !folder.collapsed; renderNotes(); persist();
+  }
+};
+async function editFolderName(id?: string) {
+  const folder = id ? workspace.folders.find(f => f.id === id) : null;
+  const parentId = folder ? folder.parentId : selectedFolderId;
+  if (!await confirmDialog(`<h2>${folder ? '重命名文件夹' : '新建文件夹'}</h2><label class="folder-name-label">文件夹名称<input id="folder-name" maxlength="100" required value="${escape(folder?.name ?? '新建文件夹')}" /></label>`)) return;
+  const name = $<HTMLInputElement>('#folder-name').value.trim();
+  if (!name || /[/\\]/.test(name)) { notify('文件夹名称不能为空，也不能包含斜杠。'); return; }
+  if (workspace.folders.some(f => f.parentId === parentId && f.name === name && f.id !== id)) { notify('该位置已有同名文件夹。'); return; }
+  if (folder) folder.name = name;
+  else {
+    const newFolder = { id: crypto.randomUUID(), name, parentId, collapsed: false };
+    workspace.folders.push(newFolder); selectedFolderId = newFolder.id; revealFolder(parentId);
+  }
+  renderNotes(); persist();
+}
+$('#new-folder').onclick = () => editFolderName();
+$('#note-list').ondblclick = event => {
+  const row = (event.target as HTMLElement).closest<HTMLElement>('[data-folder]');
+  if (row) editFolderName(row.dataset.folder);
+};
+$('.tree-root').onclick = event => {
+  if (!(event.target as HTMLElement).closest('button')) { selectedFolderId = null; renderNotes(); }
+};
+$('.sidebar').addEventListener('dragstart', event => {
+  const drag = event as DragEvent;
+  const row = (drag.target as HTMLElement).closest<HTMLElement>('[data-id], [data-folder]');
+  if (row && drag.dataTransfer) {
+    drag.dataTransfer.effectAllowed = 'move';
+    drag.dataTransfer.setData('text/plain', row.textContent ?? '');
+    drag.dataTransfer.setData('application/x-mkdocsweb-item', JSON.stringify({ type: row.dataset.id ? 'note' : 'folder', id: row.dataset.id ?? row.dataset.folder }));
+  }
+});
+$('.sidebar').addEventListener('dragover', event => {
+  const drag = event as DragEvent;
+  if (!drag.dataTransfer?.types.includes('application/x-mkdocsweb-item')) return;
+  const target = (drag.target as HTMLElement).closest<HTMLElement>('[data-folder], [data-drop-root]');
+  if (!target) return;
+  drag.preventDefault(); drag.dataTransfer.dropEffect = 'move';
+  document.querySelectorAll('.tree-drop-target').forEach(el => el.classList.remove('tree-drop-target'));
+  target.classList.add('tree-drop-target');
+});
+$('.sidebar').addEventListener('dragleave', event => {
+  const target = (event.target as HTMLElement).closest('.tree-drop-target');
+  if (target && !target.contains((event as DragEvent).relatedTarget as Node)) target.classList.remove('tree-drop-target');
+});
+$('.sidebar').addEventListener('dragend', () => document.querySelectorAll('.tree-drop-target').forEach(el => el.classList.remove('tree-drop-target')));
+$('.sidebar').addEventListener('drop', event => {
+  const drag = event as DragEvent;
+  const target = (drag.target as HTMLElement).closest<HTMLElement>('[data-folder], [data-drop-root]');
+  if (!target) return;
+  const raw = drag.dataTransfer?.getData('application/x-mkdocsweb-item');
+  if (!raw) return;
+  drag.preventDefault();
+  const parentId = target.dataset.folder ?? null;
+  try {
+    const item = JSON.parse(raw);
+    if (parentId !== null && !workspace.folders.some(f => f.id === parentId)) return;
+    if (item.type === 'folder') {
+      const folder = workspace.folders.find(f => f.id === item.id);
+      if (!folder || !canMoveFolder(workspace.folders, folder.id, parentId)) return;
+      if (workspace.folders.some(f => f.id !== folder.id && f.parentId === parentId && f.name === folder.name)) { notify('目标位置已有同名文件夹。'); return; }
+      folder.parentId = parentId;
+    } else if (item.type === 'note') {
+      const note = workspace.notes.find(n => n.id === item.id);
+      if (!note) return;
+      note.folderId = parentId;
+    } else return;
+    selectedFolderId = parentId; revealFolder(parentId); renderNotes(); persist();
+  } catch { notify('无法移动此项目。'); } finally { document.querySelectorAll('.tree-drop-target').forEach(el => el.classList.remove('tree-drop-target')); }
+});
+$('#import-folder').onclick = () => $<HTMLInputElement>('#directory-input').click();
+$<HTMLInputElement>('#directory-input').onchange = async event => {
+  const input = event.target as HTMLInputElement;
+  const parentId = selectedFolderId;
+  const files = Array.from(input.files ?? []).filter(file => /\.(md|markdown|txt)$/i.test(file.name));
+  let imported = 0;
+  let lastId: string | null = null;
+  for (const file of files) {
+    if (file.size > 5 * 1024 * 1024) { notify(`${file.name} 超过 5 MB，未导入。`); continue; }
+    try {
+      const content = await file.text();
+      const path = file.webkitRelativePath.split('/'); path.pop();
+      const folderId = ensureFolderPath(workspace, path, parentId);
+      const note = { id: crypto.randomUUID(), title: file.name.replace(/\.(md|markdown|txt)$/i, ''), content, folderId, updatedAt: Date.now() };
+      workspace.notes.push(note); lastId = note.id; imported++;
+    } catch { notify(`无法读取 ${file.name}`); }
+  }
+  if (lastId) selectNote(lastId);
+  else { renderNotes(); persist(); }
+  notify(imported ? `已按目录层级导入 ${imported} 份文档。` : '文件夹中未找到可导入的 Markdown 或 TXT 文档。');
+  input.value = '';
+};
 $('#doc-title').oninput = () => { active().title = $<HTMLInputElement>('#doc-title').value; active().updatedAt = Date.now(); $('#crumb-title').textContent = active().title || '未命名文档'; document.title = `${active().title || '未命名文档'} · MkDocs Web`; renderNotes(); persist(); };
 $('#source-toggle').onclick = () => { sourceMode = !sourceMode; editor.changeMode(sourceMode ? 'markdown' : 'wysiwyg', true); $('#source-toggle').setAttribute('aria-pressed', String(sourceMode)); $('#source-toggle span').textContent = sourceMode ? '即时编辑' : '源码模式'; };
 $('#sidebar-toggle').onclick = () => document.body.classList.toggle(window.innerWidth <= 700 ? 'sidebar-open' : 'sidebar-hidden');
@@ -161,7 +281,7 @@ $<HTMLInputElement>('#file-input').onchange = async event => {
 $<HTMLInputElement>('#backup-input').onchange = async event => {
   const input = event.target as HTMLInputElement; const file = input.files?.[0]; if (!file) return;
   if (file.size > 20 * 1024 * 1024) { notify('备份文件超过 20 MB，无法恢复。'); input.value = ''; return; }
-  try { const restored = parseWorkspace(await file.text()); if (!restored) throw new Error(); for (const note of restored.notes) workspace.notes.push({ ...note, id: crypto.randomUUID() }); renderNotes(); persist(); notify(`已合并恢复 ${restored.notes.length} 份文档。`); } catch { notify('备份格式无效，当前文档未受影响。'); }
+  try { const restored = parseWorkspace(await file.text()); if (!restored) throw new Error(); mergeWorkspace(workspace, restored); renderNotes(); persist(); notify(`已合并恢复 ${restored.notes.length} 份文档。`); } catch { notify('备份格式无效，当前文档未受影响。'); }
   input.value = '';
 };
 function confirmDialog(html: string): Promise<boolean> { $('#dialog-content').innerHTML = html; const dialog = $<HTMLDialogElement>('#dialog'); dialog.showModal(); return new Promise(resolve => dialog.addEventListener('close', () => resolve(dialog.returnValue === 'confirm'), { once: true })); }
@@ -178,5 +298,5 @@ document.addEventListener('keydown', event => {
 });
 window.addEventListener('beforeunload', persist);
 window.addEventListener('storage', event => { if (event.key === STORAGE_KEY) { storageHealthy = false; clearTimeout(saveTimer); setSaveState(false); notify('其他标签页更新了文档，当前页已暂停保存。请导出未保存内容后刷新。'); } });
-selectNote(workspace.activeId);
+selectNote(workspace.activeId, false);
 if (!storageHealthy) notify('无法读取本地存储。为保护原始数据，自动保存已暂停，请导出当前文档。');

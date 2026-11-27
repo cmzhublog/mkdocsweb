@@ -20,3 +20,19 @@
 .font-picker select:focus-visible{outline:2px solid var(--green);outline-offset:2px}
 .font-picker>.lucide{position:absolute;right:8px;width:12px;height:12px;pointer-events:none}
 @media(max-width:700px){.writing-options{gap:5px}.font-picker>span,.editor-bar-label{display:none}.font-picker select{min-width:80px}.editor-bar{justify-content:flex-end}}
+
+/* Compact folder tree: one name per row, with depth matching the directory. */
+.section-label.tree-root{padding:20px 8px 8px;align-items:center;letter-spacing:0;cursor:pointer}
+.tree-actions{display:flex;gap:2px}.tree-actions .icon-button{width:27px;height:27px}.tree-actions .lucide{width:15px;height:15px}
+#note-list{overflow:auto;padding-bottom:12px}
+#note-list .note-item,#note-list .folder-row{display:flex;align-items:center;height:34px;min-height:34px;width:max(100%,calc(var(--depth)*14px + 135px));gap:8px;margin:1px 0;padding:0 9px 0 calc(12px + var(--depth)*14px);text-align:left;border-radius:5px;color:var(--ink);font-size:14px;font-weight:400}
+#note-list .note-item{padding-left:calc(34px + var(--depth)*14px)}
+#note-list .note-item>.lucide,#note-list .folder-row>.lucide{width:16px;height:16px;margin:0;color:var(--muted)}
+#note-list .folder-row>.tree-chevron{width:12px;height:12px;margin-left:-2px;margin-right:0}
+#note-list .tree-title{display:block;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:34px}
+#note-list .note-item.active{background:var(--green-soft);color:var(--green)}
+#note-list .note-item.active:before{height:16px;top:9px;width:2px}
+#note-list .folder-row.selected-folder{color:var(--green)}
+#note-list .tree-drop-target,.tree-root.tree-drop-target{outline:1px dashed var(--green);outline-offset:-2px;background:var(--green-soft)}
+.sidebar-bottom{padding-top:10px}.sidebar-meta{justify-content:flex-end;margin-top:12px;padding:9px 18px}
+.folder-name-label{font-size:14px;display:block}.folder-name-label input{display:block;width:100%;margin-top:10px;padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:var(--paper);color:var(--ink);font:inherit}
