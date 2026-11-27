@@ -4,6 +4,7 @@ import { Schema } from 'prosemirror-model';
 import { EditorState, Plugin, PluginKey, Selection, TextSelection } from 'prosemirror-state';
 import { InputRule, inputRules, undoInputRule } from 'prosemirror-inputrules';
 import { keymap } from 'prosemirror-keymap';
+import { history, undo, redo } from 'prosemirror-history';
 import { markdownShortcuts } from '../src/markdown-shortcuts.ts';
 import type { EditorView } from 'prosemirror-view';
 
@@ -29,7 +30,7 @@ function harness(block = 'paragraph', initial = '', parent = 'doc') {
     pmState: { Plugin, PluginKey, Selection, TextSelection },
     pmRules: { InputRule, inputRules, undoInputRule }, pmKeymap: { keymap },
   });
-  const plugins = info.wysiwygPlugins.map(make => make());
+  const plugins = [...info.wysiwygPlugins.map(make => make()), history()];
   const node = schema.node(block, null, initial ? [schema.text(initial)] : []);
   const doc = schema.node('doc', null, [parent === 'doc' ? node : schema.node(parent, null, node)]);
   const view = {
@@ -46,22 +47,44 @@ function harness(block = 'paragraph', initial = '', parent = 'doc') {
         if (!handled) view.dispatch(view.state.tr.insertText(char));
       }
     },
-    enter(composing = false) {
-      return plugins.some(plugin => plugin.props.handleKeyDown?.call(plugin, view, { key: 'Enter', isComposing: composing } as KeyboardEvent));
+    enter(composing = false, shiftKey = false) {
+      return plugins.some(plugin => plugin.props.handleKeyDown?.call(plugin, view, { key: 'Enter', isComposing: composing, shiftKey } as KeyboardEvent));
     },
   };
 }
 
-test('输入 # 至 ###### 加空格创建相应级别标题，退格可撤回', () => {
+test('标题保留原始语法，输入完成按回车才渲染并进入正文', () => {
   for (let level = 1; level <= 6; level++) {
     const h = harness(); h.type('#'.repeat(level) + ' ');
+    assert.equal(h.view.state.doc.firstChild?.type.name, 'paragraph');
+    h.type('完整的中文标题');
+    const raw = '#'.repeat(level) + ' 完整的中文标题';
+    assert.equal(h.view.state.doc.textContent, raw);
+    assert.equal(h.enter(), true);
     assert.equal(h.view.state.doc.firstChild?.type.name, 'heading');
     assert.equal(h.view.state.doc.firstChild?.attrs.level, level);
-    assert.equal(undoInputRule(h.view.state, tr => h.view.dispatch(tr)), true);
-    assert.equal(h.view.state.doc.textContent, '#'.repeat(level) + ' ');
+    assert.equal(h.view.state.doc.firstChild?.textContent, '完整的中文标题');
+    assert.equal(h.view.state.selection.$from.parent.type.name, 'paragraph');
+    assert.equal(undo(h.view.state, tr => h.view.dispatch(tr)), true);
+    assert.equal(h.view.state.doc.firstChild?.type.name, 'paragraph');
+    assert.equal(h.view.state.doc.textContent, raw);
+    assert.equal(redo(h.view.state, tr => h.view.dispatch(tr)), true);
+    h.type('下一行正文');
+    assert.equal(h.view.state.doc.lastChild?.textContent, '下一行正文');
+    assert.equal(h.view.state.doc.firstChild?.textContent, '完整的中文标题');
   }
-  const h = harness(); h.type('####### ');
-  assert.equal(h.view.state.doc.firstChild?.type.name, 'paragraph');
+});
+test('空标题、非法层级、Shift+Enter、输入法回车及行中回车不转换标题', () => {
+  for (const text of ['## ', '##', '####### 标题', '正文 ## 标题', '##标题']) {
+    const h = harness(); h.type(text);
+    assert.equal(h.enter(), false);
+    assert.equal(h.view.state.doc.textContent, text);
+  }
+  const h = harness('paragraph', '## 中文标题');
+  assert.equal(h.enter(true), false);
+  assert.equal(h.enter(false, true), false);
+  h.view.dispatch(h.view.state.tr.setSelection(TextSelection.create(h.view.state.doc, 5)));
+  assert.equal(h.enter(), false);
 });
 test('代码围栏在回车后创建代码块，保留语言；代码内不转换 Markdown', () => {
   const h = harness(); h.type('```typescript'); assert.equal(h.enter(), true);
@@ -125,6 +148,9 @@ test('受限单元格不允许的块格式保留原始字符，不损坏文档',
     const h = harness('paragraph', '', 'restrictedCell'); h.type(text);
     assert.equal(h.view.state.doc.textContent, text);
   }
+  const heading = harness('paragraph', '## 完整标题', 'restrictedCell');
+  assert.equal(heading.enter(), false);
+  assert.equal(heading.view.state.doc.textContent, '## 完整标题');
   const h = harness('paragraph', '```js', 'restrictedCell');
   assert.equal(h.enter(), false);
   assert.equal(h.view.state.doc.textContent, '```js');

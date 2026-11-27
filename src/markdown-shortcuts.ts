@@ -1,4 +1,5 @@
 import type { PluginContext } from '@toast-ui/editor';
+import { closeHistory } from 'prosemirror-history';
 
 type ShortcutContext = Pick<PluginContext, 'pmState' | 'pmRules' | 'pmKeymap'>;
 
@@ -6,17 +7,11 @@ type ShortcutContext = Pick<PluginContext, 'pmState' | 'pmRules' | 'pmKeymap'>;
 export function markdownShortcuts({ pmState, pmRules, pmKeymap }: ShortcutContext) {
   const { InputRule, inputRules, undoInputRule } = pmRules;
   const { Plugin } = pmState;
-  const blockRule = new InputRule(/^(#{1,6}|>|[-+*]|\d+[.)]) $/, (state, match, start, end) => {
+  const blockRule = new InputRule(/^(>|[-+*]|\d+[.)]) $/, (state, match, start, end) => {
     const { $from, empty } = state.selection;
     if (!empty || $from.parent.type.name !== 'paragraph') return null;
     if ($from.marks().some(m => m.type.name === 'code')) return null;
     const marker = match[1];
-    if (marker.startsWith('#')) {
-      const parent = $from.node(-1);
-      if (!parent.canReplaceWith($from.index(-1), $from.index(-1) + 1, state.schema.nodes.heading)) return null;
-      const tr = state.tr.delete(start, end);
-      return tr.setBlockType(start, start, state.schema.nodes.heading, { level: marker.length });
-    }
     const tr = state.tr.delete(start, end);
     const range = tr.doc.resolve(start).blockRange();
     if (!range) return null;
@@ -81,6 +76,20 @@ export function markdownShortcuts({ pmState, pmRules, pmKeymap }: ShortcutContex
           return true;
         }
         if ($from.parent.type.name !== 'paragraph') return false;
+        const heading = text.match(/^(#{1,6})[ \t]+(\S.*)$/);
+        if (heading) {
+          const { schema } = state;
+          if (!$from.node(-1).canReplaceWith($from.index(-1), $from.index(-1) + 1, schema.nodes.heading)) return false;
+          const prefixLength = text.length - heading[2].length;
+          const tr = closeHistory(state.tr).delete($from.start(), $from.start() + prefixLength);
+          tr.setBlockType($from.start(), $from.start(), schema.nodes.heading, { level: heading[1].length });
+          const afterHeading = tr.mapping.map($from.after());
+          tr.insert(afterHeading, schema.nodes.paragraph.create());
+          tr.setSelection(pmState.TextSelection.create(tr.doc, afterHeading + 1));
+          tr.setStoredMarks([]);
+          view.dispatch(tr.scrollIntoView());
+          return true;
+        }
         const fence = text.match(/^(`{3,}|~{3,})([\w+#.-]*)\s*$/);
         if (fence) {
           if (!$from.node(-1).canReplaceWith($from.index(-1), $from.index(-1) + 1, state.schema.nodes.codeBlock)) return false;

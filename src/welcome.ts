@@ -19,7 +19,7 @@ MkDocs Web 是一个本地优先的 Markdown 编辑器。你正在阅读的这�
 
 ### 试试 Markdown 的小魔法
 
-输入 \`# \` 后开始一个标题，输入 \`- \` 创建列表，也可以用工具栏为文字添加 **加粗**、*斜体* 或 [链接](https://www.markdownguide.org/)。
+输入 \`# \` 并写完标题后，按回车渲染标题；输入 \`- \` 创建列表，也可以用工具栏为文字添加 **加粗**、*斜体* 或 [链接](https://www.markdownguide.org/)。
 
 \`\`\`javascript
 const idea = '一个小小的开始';
