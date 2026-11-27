@@ -3,13 +3,14 @@ import '@toast-ui/editor/dist/toastui-editor.css';
 import '@toast-ui/editor/dist/theme/toastui-editor-dark.css';
 import '@toast-ui/editor/dist/i18n/zh-cn';
 import DOMPurify from 'dompurify';
-import { createIcons, FilePlus, Search, FolderOpen, Folder, FolderPlus, ChevronRight, Upload, HardDrive, Moon, PanelLeft, Maximize, Download, ChevronDown, FileText, Trash2, PenLine, CodeXml, ListTree, Sparkles, Keyboard, CheckCheck, CircleAlert, Sun } from 'lucide';
+import { createIcons, GitBranch, FilePlus, Search, FolderOpen, Folder, FolderPlus, ChevronRight, Upload, HardDrive, Moon, PanelLeft, Maximize, Download, ChevronDown, FileText, Trash2, PenLine, CodeXml, ListTree, Sparkles, Keyboard, CheckCheck, CircleAlert, Sun } from 'lucide';
 import { canMoveFolder, ensureFolderPath, mergeWorkspace, filename, headings, parseWorkspace, readingStats, STORAGE_KEY, type Workspace } from './documents';
 import { welcome } from './welcome';
 import { markdownShortcuts } from './markdown-shortcuts';
+import { createGitPanel } from './git-ui';
 import './style.css';
 
-const icons = { FilePlus, Search, FolderOpen, Folder, FolderPlus, ChevronRight, Upload, HardDrive, Moon, PanelLeft, Maximize, Download, ChevronDown, FileText, Trash2, PenLine, CodeXml, ListTree, Sparkles, Keyboard, CheckCheck, CircleAlert, Sun };
+const icons = { GitBranch, FilePlus, Search, FolderOpen, Folder, FolderPlus, ChevronRight, Upload, HardDrive, Moon, PanelLeft, Maximize, Download, ChevronDown, FileText, Trash2, PenLine, CodeXml, ListTree, Sparkles, Keyboard, CheckCheck, CircleAlert, Sun };
 const icon = (name: string, cls = '') => `<i data-lucide="${name}" class="${cls}"></i>`;
 const $ = <T extends HTMLElement = HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
@@ -46,7 +47,7 @@ $('#app').innerHTML = `
     <label class="search">${icon('search')}<input id="search" placeholder="搜索你的文档…" aria-label="搜索文档"/><kbd>⌘ K</kbd></label>
     <div class="section-label tree-root" data-drop-root><span>文件</span><div class="tree-actions"><button id="new-note" class="icon-button" aria-label="新建文件" title="新建文件（⌘ / Ctrl + Shift + N）">${icon('file-plus')}</button><button id="new-folder" class="icon-button" aria-label="新建文件夹" title="新建文件夹">${icon('folder-plus')}</button><button id="import-folder" class="icon-button" aria-label="导入文件夹" title="导入文件夹">${icon('folder-open')}</button></div></div>
     <nav id="note-list" role="tree" aria-label="文档文件夹"></nav>
-    <div class="sidebar-bottom"><button id="import" class="import-button">${icon('folder-open')} 导入 Markdown ${icon('upload')}</button><div class="sidebar-meta"><button id="theme" class="icon-button" aria-label="切换深色主题" title="切换深色主题">${icon('moon')}</button></div></div>
+    <div class="sidebar-bottom"><button id="git-repository" class="import-button">${icon('git-branch')} GitHub 仓库</button><button id="import" class="import-button">${icon('folder-open')} 导入 Markdown ${icon('upload')}</button><div class="sidebar-meta"><button id="theme" class="icon-button" aria-label="切换深色主题" title="切换深色主题">${icon('moon')}</button></div></div>
   </aside>
   <main class="main">
     <header class="topbar"><div class="breadcrumb"><button id="sidebar-toggle" class="icon-button" aria-label="显示或隐藏文档列表">${icon('panel-left')}</button><span class="crumb-parent">我的文档</span><span class="slash">/</span><span id="crumb-title"></span></div><div class="top-actions"><span id="save-state" role="status"></span><button id="focus" class="text-button">${icon('maximize')}<span>专注</span></button><div class="export-wrap"><button id="export" class="export-button" aria-expanded="false">${icon('download')} 导出 ${icon('chevron-down')}</button><div id="export-menu" class="dropdown" hidden><button data-export="md">Markdown (.md)</button><button data-export="html">网页 (.html)</button><button data-export="print">打印 / 存为 PDF</button><button data-export="backup">备份所有文档 (.json)</button><button data-export="restore">恢复文档备份</button></div></div></div></header>
@@ -157,6 +158,25 @@ $<HTMLSelectElement>('#font-select').onchange = event => {
   document.documentElement.style.setProperty('--document-font', documentFont.family);
   try { localStorage.setItem('mkdocsweb.font', documentFont.id); } catch { notify('字体已切换，浏览器无法记住本次设置。'); }
 };
+const gitPanel = createGitPanel(workspace, {
+  notify,
+  changed(noteId, folderId, refreshEditors) {
+    if (refreshEditors) {
+      loading = true;
+      for (const [id, entry] of editors) {
+        const note = workspace.notes.find(n => n.id === id);
+        if (note) entry.instance.setMarkdown(note.content, false);
+      }
+      loading = false;
+    }
+    if (!workspace.notes.length) createNote('', '未命名文档', null);
+    const nextId = noteId ?? (workspace.notes.some(n => n.id === workspace.activeId) ? workspace.activeId : workspace.notes[0].id);
+    if (refreshEditors || nextId !== workspace.activeId) selectNote(nextId);
+    if (folderId !== undefined) { selectedFolderId = folderId; revealFolder(folderId); }
+    renderNotes(); persist();
+  },
+});
+$('#git-repository').onclick = () => gitPanel.open(selectedFolderId, workspace.activeId);
 $('#new-note').onclick = () => createNote();
 $('#search').oninput = renderNotes;
 $('#note-list').onclick = event => {

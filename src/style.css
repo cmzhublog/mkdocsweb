@@ -38,3 +38,16 @@
 .folder-name-label{font-size:14px;display:block}.folder-name-label input{display:block;width:100%;margin-top:10px;padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:var(--paper);color:var(--ink);font:inherit}
 
 .sidebar>.search{margin-top:0}
+
+.sidebar-bottom>#git-repository{margin-bottom:8px}
+.git-dialog{max-width:680px;max-height:90dvh;overflow:auto;padding:26px}
+.git-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px}.git-heading h2{margin:0;font-size:21px}.git-close{font-size:27px;line-height:1;padding:0 6px;color:var(--muted);border-radius:5px}
+.git-label{display:block;font-size:14px;margin:15px 0;color:var(--ink)}.git-label>span{display:block;font-size:12px;color:var(--muted);margin-top:5px;line-height:1.7}
+.git-label input,.git-label select{display:block;width:100%;padding:10px 12px;border:1px solid var(--line);background:var(--paper);color:var(--ink);font:inherit;font-size:14px;border-radius:6px;margin-top:8px}
+.git-label select{appearance:none;padding-right:32px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238a9290' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center}
+.git-dialog .git-help{font-size:12px;line-height:1.8;margin:10px 0;color:var(--muted)}.git-repository-info{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:14px;background:var(--green-soft);padding:12px;border-radius:6px}.git-repository-info>span{color:var(--muted)}
+.git-actions{display:flex;gap:9px;margin:18px 0}.git-actions button,.git-dialog #git-clone,.git-dialog #git-push{font-size:14px;padding:10px 16px;border:1px solid var(--line);border-radius:6px}.git-dialog .primary{border-color:#537a61}.git-dialog button:disabled{opacity:.45;cursor:wait}.git-dialog #git-push:disabled{cursor:default}
+#git-status{font-size:13px;line-height:1.8;overflow-wrap:anywhere;color:var(--green);margin:16px 0 0}#git-status.git-error{color:#c45646}
+#git-changes{max-height:300px;overflow:auto;margin:12px 0}.git-change{border-bottom:1px solid var(--line);font-size:13px}.git-change summary{display:flex;align-items:center;gap:10px;padding:10px 4px;cursor:pointer}.git-change summary>span:last-child{overflow-wrap:anywhere;min-width:0}.git-change-kind{font-size:12px;flex-shrink:0;border-radius:4px;padding:2px 6px;background:var(--green-soft);color:var(--green)}.git-change-kind.deleted{background:#c4564618;color:#c45646}.git-change-kind.modified{background:#b1852e18;color:#aa8236}
+.git-change-content{padding:0 5px 12px}.git-change-content p{font-size:12px;margin:8px 0}.git-change-content pre{background:var(--code);padding:12px;border-radius:5px;max-height:220px;overflow:auto;font:12px/1.7 monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+@media(max-width:700px){.git-dialog{padding:20px;max-height:94dvh}.git-heading h2{font-size:19px}}

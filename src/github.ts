@@ -1,0 +1,186 @@
+import { ensureFolderPath, type Workspace, type Note } from './documents.ts';
+import type { GitChange, GitFile, GitRepository, GitSnapshot } from './git-types';
+
+export function parseCloneUrl(value: string): { owner: string; repo: string } {
+  const raw = value.trim();
+  const ssh = raw.match(/^git@github\.com:([^/]+)\/([^/]+?)(?:\.git)?\/?$/i);
+  let parts: string[];
+  if (ssh) parts = [ssh[1], ssh[2]];
+  else {
+    let url: URL;
+    try { url = new URL(raw); } catch { throw new Error('请输入 GitHub HTTPS 或 SSH clone 地址。'); }
+    if (!['https:', 'ssh:'].includes(url.protocol) || url.hostname.toLowerCase() !== 'github.com' || url.port || url.password || url.search || url.hash || (url.protocol === 'https:' && url.username) || (url.protocol === 'ssh:' && url.username !== 'git')) throw new Error('仅支持 github.com 的仓库 clone 地址，请勿在地址中包含令牌。');
+    parts = url.pathname.replace(/^\/|\/$/g, '').replace(/\.git$/i, '').split('/');
+  }
+  if (parts.length !== 2 || parts.some(p => !/^[\w.-]+$/.test(p) || p === '.' || p === '..')) throw new Error('仓库地址应为 https://github.com/用户名/仓库名.git');
+  return { owner: parts[0], repo: parts[1] };
+}
+
+const isDocument = (path: string) => /\.(md|markdown|txt)$/i.test(path);
+function validSegment(name: string) {
+  return !!name.trim() && !/[\u0000-\u001f/\\]/.test(name) && !['.', '..', '.git'].includes(name.toLowerCase());
+}
+
+/** Return a path only for notes owned by this repository, excluding nested repo roots. */
+export function repositoryPath(workspace: Workspace, repository: GitRepository, note: Note): string | null {
+  const parts: string[] = [];
+  let id = note.folderId;
+  const seen = new Set<string>();
+  while (id && id !== repository.rootFolderId) {
+    if (seen.has(id) || workspace.repositories?.some(r => r.id !== repository.id && r.rootFolderId === id)) return null;
+    seen.add(id);
+    const folder = workspace.folders.find(f => f.id === id);
+    if (!folder) return null;
+    parts.unshift(folder.name); id = folder.parentId;
+  }
+  if (id !== repository.rootFolderId) return null;
+  parts.push(`${note.title}${note.fileExtension ?? '.md'}`);
+  if (parts.some(p => !validSegment(p))) throw new Error('仓库内的文件名或目录名无效，请检查空名称、斜杠或特殊路径。');
+  return parts.join('/');
+}
+
+export function repositoryFiles(workspace: Workspace, repository: GitRepository): { path: string; content: string; mode: string }[] {
+  const paths = new Set<string>();
+  const result = workspace.notes.flatMap(note => {
+    const path = repositoryPath(workspace, repository, note);
+    if (path === null) return [];
+    if (paths.has(path)) throw new Error(`存在同名文件：${path}。请重命名后再 push。`);
+    paths.add(path);
+    return [{ path, content: note.content, mode: repository.files.find(f => f.path === path)?.mode ?? '100644' }];
+  });
+  const managedPaths = new Set(repository.files.map(f => f.path));
+  const unmanaged = repository.allPaths.filter(path => !managedPaths.has(path));
+  for (const file of result) {
+    if (unmanaged.some(path => path === file.path || path.startsWith(`${file.path}/`) || file.path.startsWith(`${path}/`))) throw new Error(`路径与仓库中的其他文件冲突：${file.path}`);
+    if (result.some(other => other.path !== file.path && other.path.startsWith(`${file.path}/`))) throw new Error(`文件与目录路径冲突：${file.path}`);
+  }
+  return result;
+}
+
+export function gitChanges(workspace: Workspace, repository: GitRepository): GitChange[] {
+  const files = repositoryFiles(workspace, repository);
+  const baseline = new Map(repository.files.map(f => [f.path, f]));
+  return [
+    ...files.flatMap(file => {
+      const before = baseline.get(file.path);
+      return !before || before.content !== file.content ? [{ ...file, kind: before ? 'modified' as const : 'added' as const }] : [];
+    }),
+    ...repository.files.filter(before => !files.some(f => f.path === before.path)).map(before => ({ path: before.path, kind: 'deleted' as const, mode: before.mode })),
+  ].sort((a, b) => a.path.localeCompare(b.path));
+}
+
+export function attachRepository(workspace: Workspace, snapshot: GitSnapshot): GitRepository {
+  const id = crypto.randomUUID();
+  // Repository roots always start independently from local folders and other repositories.
+  const root = { id: crypto.randomUUID(), name: snapshot.repo, parentId: null, collapsed: false };
+  workspace.folders.push(root);
+  const repository = { ...snapshot, id, rootFolderId: root.id };
+  (workspace.repositories ??= []).push(repository);
+  applySnapshot(workspace, repository, snapshot);
+  return repository;
+}
+
+export function applySnapshot(workspace: Workspace, repository: GitRepository, snapshot: GitSnapshot): void {
+  const existing = new Map(workspace.notes.flatMap(note => {
+    const path = repositoryPath(workspace, repository, note);
+    return path === null ? [] : [[path, note] as const];
+  }));
+  const currentPaths = new Set(snapshot.files.map(f => f.path));
+  workspace.notes = workspace.notes.filter(n => {
+    const path = repositoryPath(workspace, repository, n);
+    return path === null || currentPaths.has(path);
+  });
+  for (const file of snapshot.files) {
+    const parts = file.path.split('/'); const name = parts.pop()!;
+    const extension = name.match(/\.(md|markdown|txt)$/i)![0];
+    const folderId = ensureFolderPath(workspace, parts, repository.rootFolderId);
+    const old = existing.get(file.path);
+    if (old) { old.content = file.content; old.updatedAt = Date.now(); }
+    else workspace.notes.push({ id: crypto.randomUUID(), title: name.slice(0, -extension.length), fileExtension: extension, content: file.content, folderId, updatedAt: Date.now() });
+  }
+  repository.files = snapshot.files; repository.allPaths = snapshot.allPaths;
+  repository.headSha = snapshot.headSha; repository.treeSha = snapshot.treeSha;
+}
+
+export class GitHubClient {
+  private token: string;
+  private request: typeof fetch;
+  constructor(token = '', request: typeof fetch = globalThis.fetch.bind(globalThis)) { this.token = token; this.request = request; }
+
+  private async api<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
+    let response: Response;
+    try {
+      response = await this.request(`https://api.github.com${path}`, {
+        method, redirect: 'error', cache: 'no-store',
+        headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}) },
+        ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(60000),
+      });
+    } catch { throw new Error('无法连接 GitHub，请检查网络。若刚执行 push，请先到 GitHub 确认结果再操作。'); }
+    if (!response.ok) {
+      if (response.status === 401) throw new Error('GitHub 令牌无效或已过期，请重新填写。');
+      if (response.status === 403) throw new Error('GitHub 拒绝请求：请检查 API 配额、令牌 Contents 权限或分支保护规则。');
+      if (response.status === 404) throw new Error('找不到仓库或分支；私有仓库需要具有访问权限的令牌。');
+      if ([409, 422].includes(response.status)) throw new Error('GitHub 无法更新分支，可能存在远端新提交、空仓库或分支保护。未执行强制推送。');
+      throw new Error(`GitHub 请求失败（${response.status}），请稍后重试。`);
+    }
+    return response.json() as Promise<T>;
+  }
+
+  private base(owner: string, repo: string) { return `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`; }
+  async head(owner: string, repo: string, branch: string): Promise<string> {
+    const result = await this.api<{ object: { sha: string } }>(`${this.base(owner, repo)}/git/ref/heads/${encodeURIComponent(branch)}`);
+    return result.object.sha;
+  }
+  async clone(url: string, requestedBranch = ''): Promise<GitSnapshot> {
+    const { owner, repo } = parseCloneUrl(url);
+    const base = this.base(owner, repo);
+    const metadata = await this.api<{ default_branch: string }>(base);
+    const branch = requestedBranch.trim() || metadata.default_branch;
+    const headSha = await this.head(owner, repo, branch);
+    const commit = await this.api<{ tree: { sha: string } }>(`${base}/git/commits/${headSha}`);
+    const tree = await this.api<{ truncated: boolean; tree: { path: string; type: string; mode: string; sha: string; size?: number }[] }>(`${base}/git/trees/${commit.tree.sha}?recursive=1`);
+    if (tree.truncated) throw new Error('仓库目录过大，GitHub 未返回完整文件树，已停止导入以免漏掉文档。');
+    const entries = tree.tree.filter(e => e.type === 'blob');
+    const docs = entries.filter(e => isDocument(e.path) && ['100644', '100755'].includes(e.mode));
+    if (docs.some(e => e.path.split('/').some(part => !validSegment(part)))) throw new Error('仓库中有当前编辑器不支持的文件或目录名称，请先检查特殊路径字符。');
+    if (docs.length > 300 || docs.some(e => (e.size ?? 0) > 2 * 1024 * 1024) || docs.reduce((n, e) => n + (e.size ?? 0), 0) > 8 * 1024 * 1024) throw new Error('首版每个仓库最多导入 300 份文档，单份不超过 2 MB，总计不超过 8 MB。');
+    const files: GitFile[] = [];
+    // Bounded concurrency avoids flooding the API or exhausting unauthenticated quotas at once.
+    let next = 0;
+    let failed = false;
+    await Promise.all(Array.from({ length: Math.min(4, docs.length) }, async () => {
+      while (!failed && next < docs.length) {
+        const entry = docs[next++];
+        try {
+          const blob = await this.api<{ encoding: string; content: string }>(`${base}/git/blobs/${entry.sha}`);
+          if (blob.encoding !== 'base64') throw new Error(`无法读取文档编码：${entry.path}`);
+          let content: string;
+          try { content = new TextDecoder('utf-8', { fatal: true }).decode(Uint8Array.from(atob(blob.content.replace(/\s/g, '')), c => c.charCodeAt(0))); }
+          catch { throw new Error(`文档不是有效的 UTF-8：${entry.path}`); }
+          files.push({ path: entry.path, content, sha: entry.sha, mode: entry.mode });
+        } catch (error) { failed = true; throw error; }
+      }
+    }));
+    files.sort((a, b) => a.path.localeCompare(b.path));
+    return { owner, repo, branch, headSha, treeSha: commit.tree.sha, files, allPaths: tree.tree.filter(e => e.type !== 'tree').map(e => e.path) };
+  }
+
+  async push(repository: GitRepository, changes: GitChange[], message: string): Promise<{ headSha: string; treeSha: string }> {
+    if (!this.token) throw new Error('push 需要具有仓库 Contents 读写权限的 GitHub 令牌。');
+    if (!changes.length || !message.trim()) throw new Error('请先检查更改并填写提交说明。');
+    const base = this.base(repository.owner, repository.repo);
+    if (await this.head(repository.owner, repository.repo, repository.branch) !== repository.headSha) throw new Error('远端分支已有新提交，已停止 push。请先备份本地改动，与最新版本合并后再提交。');
+    const tree = await this.api<{ sha: string }>(`${base}/git/trees`, 'POST', {
+      base_tree: repository.treeSha,
+      tree: changes.map(c => ({ path: c.path, mode: c.mode, type: 'blob', ...(c.kind === 'deleted' ? { sha: null } : { content: c.content }) })),
+    });
+    const commit = await this.api<{ sha: string }>(`${base}/git/commits`, 'POST', { message: message.trim(), tree: tree.sha, parents: [repository.headSha] });
+    try {
+      await this.api(`${base}/git/refs/heads/${encodeURIComponent(repository.branch)}`, 'PATCH', { sha: commit.sha, force: false });
+    } catch (error) {
+      // A network failure can happen after GitHub has accepted the update.
+      if (await this.head(repository.owner, repository.repo, repository.branch).catch(() => '') !== commit.sha) throw error;
+    }
+    return { headSha: commit.sha, treeSha: tree.sha };
+  }
+}
