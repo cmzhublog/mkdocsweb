@@ -30,17 +30,17 @@ function copyButton(read: () => string) {
   button.type = 'button';
   button.className = 'code-copy';
   button.contentEditable = 'false';
-  button.textContent = '复制';
-  button.setAttribute('aria-label', '复制代码');
+  const feedback = (symbol: string, label: string) => { button.textContent = symbol; button.title = label; button.setAttribute('aria-label', label); };
+  feedback('📋', '复制代码');
   button.setAttribute('aria-live', 'polite');
   let timer: ReturnType<typeof setTimeout> | undefined;
   button.onmousedown = event => event.preventDefault();
   button.onclick = async event => {
     event.preventDefault(); event.stopPropagation();
-    try { await copyCode(read()); button.textContent = '已复制'; }
-    catch { button.textContent = '复制失败'; button.title = '请选中代码手动复制'; }
+    try { await copyCode(read()); feedback('✅', '已复制代码'); }
+    catch { feedback('❌', '复制失败，请选中代码手动复制'); }
     clearTimeout(timer);
-    timer = setTimeout(() => { button.textContent = '复制'; button.title = ''; }, 2000);
+    timer = setTimeout(() => feedback('📋', '复制代码'), 2000);
   };
   return { button, destroy: () => clearTimeout(timer) };
 }

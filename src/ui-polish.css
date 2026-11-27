@@ -107,10 +107,11 @@ button:disabled { opacity:.5; }
 #app .toastui-editor-contents pre { border:1px solid var(--line); border-radius:8px; }
 #app .toastui-editor-contents .code-block-shell pre { margin:0!important; padding:48px 18px 18px!important; }
 #app .toastui-editor-ww-code-block-highlighting:after {
-  top:9px; left:12px; right:auto; height:24px; max-width:calc(100% - 100px); overflow:hidden;
-  color:var(--muted); background-color:transparent; font:12px/21px system-ui; padding-top:0;
+  top:9px; left:auto; right:52px; height:32px; max-width:calc(100% - 72px); overflow:hidden;
+  color:var(--muted); background-color:transparent; font:12px/32px system-ui; padding:0 28px 0 8px;
 }
-#app .toastui-editor-contents .code-copy { border-color:var(--line); border-radius:5px; box-shadow:none; font:12px/18px system-ui; }
+#app .toastui-editor-contents .code-copy { display:inline-flex; align-items:center; justify-content:center; top:9px; right:10px; width:32px; height:32px; padding:0; border:1px solid var(--line); border-radius:5px; box-shadow:none; font:16px/1 system-ui; }
+#app .code-preview-shell:before { top:9px; left:auto; right:52px; max-width:calc(100% - 72px); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:12px/32px system-ui; }
 #app .toastui-editor-contents blockquote { border-left-color:var(--ui-accent-line)!important; }
 #app .toastui-editor-contents blockquote,#app .toastui-editor-contents blockquote p { color:var(--muted)!important; }
 #app .toastui-editor-contents table th { border-color:var(--line); }
