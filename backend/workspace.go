@@ -84,5 +84,5 @@ func validWorkspace(raw json.RawMessage) bool {
 			return false
 		}
 	}
-	return notes[v.ActiveID]
+	return notes[v.ActiveID] && validImageAssets(raw)
 }

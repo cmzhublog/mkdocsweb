@@ -35,7 +35,7 @@ func validGitPath(path, method string) (string, bool) {
 	case "GET":
 		valid = tail == "" || readGitPath.MatchString(tail) || (strings.HasPrefix(tail, "/git/ref/heads/") && len(tail) > len("/git/ref/heads/"))
 	case "POST":
-		valid = tail == "/git/trees" || tail == "/git/commits"
+		valid = tail == "/git/trees" || tail == "/git/commits" || tail == "/git/blobs"
 	case "PATCH":
 		valid = strings.HasPrefix(tail, "/git/refs/heads/") && len(tail) > len("/git/refs/heads/")
 	}

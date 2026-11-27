@@ -1,4 +1,5 @@
 import { api } from './api';
+import { imageReference } from './images';
 import type { Workspace } from './documents';
 import { applySnapshot, attachRepository, GitHubClient, GitDocumentLoader, gitChanges, parseCloneUrl, repositoryFiles, repositoryPath } from './github';
 import type { GitChange, GitRepository } from './git-types';
@@ -58,6 +59,7 @@ export function createGitPanel(workspace: Workspace, hooks: {
           const pre = document.createElement('pre'); pre.textContent = content.slice(0, 12000) + (content.length > 12000 ? '\n…预览已截断' : '');
           container.append(heading, pre);
         }
+        if (change.base64 !== undefined) { const p = document.createElement('p'); p.textContent = `图片文件，约 ${Math.ceil(change.base64.length * 0.75 / 1024)} KiB，将使用二进制 blob 提交。`; container.append(p); }
         if (!container.childNodes.length) container.textContent = change.kind === 'deleted' ? '仅删除此路径，未下载未打开文档的原文。' : '文档内容未修改，提交沿用仓库已有文件内容。';
       };
     });
@@ -107,8 +109,16 @@ export function createGitPanel(workspace: Workspace, hooks: {
         const outgoing = repositoryFiles(workspace, repository);
         status('正在检查远端版本并提交文档…');
         const result = await new GitHubClient(tokenFor(repository)).push(repository, changes, field('git-message').value);
-        const oldPaths = new Set(repository.files.map(f => f.path));
-        repository.files = outgoing.map(f => ({ ...f, sha: f.sha ?? '' }));
+        const oldPaths = new Set([...repository.files, ...(repository.imageFiles ?? [])].map(f => f.path));
+        repository.files = outgoing.filter(f => /\.(md|markdown|txt)$/i.test(f.path)).map(f => ({ ...f, sha: f.sha ?? '' }));
+        repository.imageFiles = outgoing.filter(f => !/\.(md|markdown|txt)$/i.test(f.path)).map(({ base64: _base64, ...f }) => ({ ...f, sha: result.blobs?.[f.path] ?? f.sha ?? '' }));
+        for (const asset of workspace.images ?? []) {
+          const note = workspace.notes.find(n => n.id === asset.noteId); if (!note) continue;
+          const path = repositoryPath(workspace, repository, note); if (path === null) continue;
+          const imagePath = (path.includes('/') ? path.slice(0, path.lastIndexOf('/') + 1) : '') + imageReference(asset);
+          const baseline = repository.imageFiles.find(f => f.path === imagePath);
+          if (baseline?.sha) asset.remote = { repositoryId: repository.id, path: imagePath, sha: baseline.sha };
+        }
         repository.allPaths = [...repository.allPaths.filter(path => !oldPaths.has(path)), ...outgoing.map(f => f.path)];
         repository.headSha = result.headSha; repository.treeSha = result.treeSha;
         for (const note of workspace.notes) {

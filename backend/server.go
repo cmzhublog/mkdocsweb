@@ -135,7 +135,8 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, 401, "请登录或重新登录")
 		return
 	}
-	if r.URL.Path != "/api/auth/session" && r.Header.Get("X-Session-User") != u.ID {
+	imageRequest := strings.HasPrefix(r.URL.Path, "/api/images/"+u.ID+"/") && r.Method == "GET"
+	if r.URL.Path != "/api/auth/session" && !imageRequest && r.Header.Get("X-Session-User") != u.ID {
 		fail(w, 401, "账号已切换，请重新加载")
 		return
 	}
@@ -144,6 +145,8 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
+	case strings.HasPrefix(r.URL.Path, "/api/images/"):
+		a.serveImage(w, r, u)
 	case r.URL.Path == "/api/auth/session" && r.Method == "GET":
 		reply(w, 200, map[string]any{"user": publicUser(u), "csrf": session.CSRF})
 	case r.URL.Path == "/api/auth/logout" && r.Method == "POST":

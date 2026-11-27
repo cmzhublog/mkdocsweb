@@ -11,6 +11,9 @@ import { createGitPanel } from './git-ui';
 import { WorkspaceSaver } from './autosave';
 import { accountPanel } from './account';
 import { sessionRedirecting, type Session } from './api';
+import { createImageAsset, encodeImage, imageMime, imageReference, imageURL, markdownImagePath, renameNoteImages } from './images';
+import { documentImages } from './image-editor';
+import { documentArchive } from './image-export';
 import './style.css';
 
 const icons = { GitBranch, FilePlus, Search, FolderOpen, Folder, FolderPlus, ChevronRight, Upload, HardDrive, Moon, PanelLeft, Maximize, Download, ChevronDown, FileText, Trash2, PenLine, CodeXml, ListTree, Sparkles, Keyboard, CheckCheck, CircleAlert, Sun };
@@ -47,15 +50,17 @@ $('#app').innerHTML = `
     <div class="sidebar-bottom"><button id="git-repository" class="import-button">${icon('git-branch')} GitHub 仓库</button><button id="import" class="import-button">${icon('folder-open')} 导入 Markdown ${icon('upload')}</button><div class="sidebar-meta"><button id="account" class="text-button">账号管理</button><button id="theme" class="icon-button" aria-label="切换深色主题" title="切换深色主题">${icon('moon')}</button></div></div>
   </aside>
   <main class="main">
-    <header class="topbar"><div class="breadcrumb"><button id="sidebar-toggle" class="icon-button" aria-label="显示或隐藏文档列表">${icon('panel-left')}</button><span class="crumb-parent">我的文档</span><span class="slash">/</span><span id="crumb-title"></span></div><div class="top-actions"><span id="save-state" role="status"></span><button id="focus" class="text-button">${icon('maximize')}<span>专注</span></button><div class="export-wrap"><button id="export" class="export-button" aria-expanded="false">${icon('download')} 导出 ${icon('chevron-down')}</button><div id="export-menu" class="dropdown" hidden><button data-export="md">Markdown (.md)</button><button data-export="html">网页 (.html)</button><button data-export="print">打印 / 存为 PDF</button><button data-export="backup">备份所有文档 (.json)</button><button data-export="restore">恢复文档备份</button></div></div></div></header>
-    <div class="work-area"><section class="writing-pane" aria-label="写作区"><div class="document-heading"><div class="eyebrow">你的文字，值得被认真对待</div><div class="title-row"><input id="doc-title" aria-label="文档标题" maxlength="100"/><button id="delete-note" class="icon-button" title="删除文档" aria-label="删除当前文档">${icon('trash-2')}</button></div><div class="document-meta">${icon('file-text')}<span>Markdown 文档</span><span class="meta-dot">·</span><span id="updated-at"></span></div></div><div class="editor-bar"><span class="editor-bar-label">${icon('pen-line')} 开始书写</span><div class="writing-options"><label class="font-picker"><span>字体</span><select id="font-select" aria-label="文档字体" title="使用设备已安装的字体">${fontOptions.map(font => `<option value="${font.id}" ${font.id === documentFont.id ? 'selected' : ''}>${font.label}</option>`).join('')}</select>${icon('chevron-down')}</label><button id="source-toggle" class="mode-toggle" aria-pressed="false">${icon('code-xml')}<span>源码模式</span></button></div></div><div id="editor"><div id="document-load-state" class="document-load-state" hidden><p id="document-load-message" role="status"></p><button id="retry-note" hidden>重试读取</button></div></div></section><aside class="outline" aria-label="文档大纲"><div class="outline-heading">${icon('list-tree')} 文档大纲</div><nav id="outline-list"></nav><div class="outline-tip">${icon('sparkles')}<p>让文字回归文字。<br/>让思绪自由流淌。</p><span>WRITE SOMETHING GOOD.</span></div></aside></div>
+    <header class="topbar"><div class="breadcrumb"><button id="sidebar-toggle" class="icon-button" aria-label="显示或隐藏文档列表">${icon('panel-left')}</button><span class="crumb-parent">我的文档</span><span class="slash">/</span><span id="crumb-title"></span></div><div class="top-actions"><span id="save-state" role="status"></span><button id="focus" class="text-button">${icon('maximize')}<span>专注</span></button><div class="export-wrap"><button id="export" class="export-button" aria-expanded="false">${icon('download')} 导出 ${icon('chevron-down')}</button><div id="export-menu" class="dropdown" hidden><button data-export="md">Markdown (.md)</button><button data-export="bundle">文档与图片 (.zip)</button><button data-export="html">网页 (.html)</button><button data-export="print">打印 / 存为 PDF</button><button data-export="backup">备份所有文档 (.json)</button><button data-export="restore">恢复文档备份</button></div></div></div></header>
+    <div class="work-area"><section class="writing-pane" aria-label="写作区"><div class="document-heading"><div class="eyebrow">你的文字，值得被认真对待</div><div class="title-row"><input id="doc-title" aria-label="文档标题" maxlength="100"/><button id="delete-note" class="icon-button" title="删除文档" aria-label="删除当前文档">${icon('trash-2')}</button></div><div class="document-meta">${icon('file-text')}<span>Markdown 文档</span><span class="meta-dot">·</span><span id="updated-at"></span></div></div><div class="editor-bar"><span class="editor-bar-label">${icon('pen-line')} 开始书写</span><div class="writing-options"><button id="insert-image" class="text-button" title="图片保存在当前文档同名 .assets 目录">插入图片</button><label class="font-picker"><span>字体</span><select id="font-select" aria-label="文档字体" title="使用设备已安装的字体">${fontOptions.map(font => `<option value="${font.id}" ${font.id === documentFont.id ? 'selected' : ''}>${font.label}</option>`).join('')}</select>${icon('chevron-down')}</label><button id="source-toggle" class="mode-toggle" aria-pressed="false">${icon('code-xml')}<span>源码模式</span></button></div></div><div id="editor"><div id="document-load-state" class="document-load-state" hidden><p id="document-load-message" role="status"></p><button id="retry-note" hidden>重试读取</button></div></div></section><aside class="outline" aria-label="文档大纲"><div class="outline-heading">${icon('list-tree')} 文档大纲</div><nav id="outline-list"></nav><div class="outline-tip">${icon('sparkles')}<p>让文字回归文字。<br/>让思绪自由流淌。</p><span>WRITE SOMETHING GOOD.</span></div></aside></div>
     <footer class="statusbar"><div><span class="status-dot"></span><span id="footer-state">所有更改已保存至服务器</span></div><div><span id="word-count"></span><span class="status-divider">|</span><span id="read-time"></span><span class="status-divider">|</span><span>UTF-8</span><span class="status-divider">|</span><button id="shortcuts">${icon('keyboard')} 快捷键</button></div></footer>
-  </main><input id="file-input" type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" multiple hidden/><input id="directory-input" type="file" webkitdirectory multiple hidden/><input id="backup-input" type="file" accept=".json,application/json" hidden/><div id="toast" role="status" hidden></div><dialog id="dialog"><form method="dialog"><div id="dialog-content"></div><div class="dialog-actions"><button value="cancel">取消</button><button value="confirm" class="primary">确定</button></div></form></dialog>`;
+  </main><input id="image-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden/><input id="file-input" type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" multiple hidden/><input id="directory-input" type="file" webkitdirectory multiple hidden/><input id="backup-input" type="file" accept=".json,application/json" hidden/><div id="toast" role="status" hidden></div><dialog id="dialog"><form method="dialog"><div id="dialog-content"></div><div class="dialog-actions"><button value="cancel">取消</button><button value="confirm" class="primary">确定</button></div></form></dialog>`;
 
+const imageUploads = new Set<Promise<void>>();
 const editors = new Map<string, { instance: Editor; host: HTMLDivElement }>();
 function makeEditor(content: string) {
+  const noteId = workspace.activeId;
   const host = document.createElement('div'); host.className = 'editor-instance'; $('#editor').append(host);
-  const instance = new Editor({ el: host, height: '100%', initialEditType: sourceMode ? 'markdown' : 'wysiwyg', previewStyle: 'vertical', initialValue: content, language: 'zh-CN', usageStatistics: false, hideModeSwitch: true, theme, autofocus: false, plugins: [markdownShortcuts], placeholder: '直接输入 Markdown：## 完整标题后回车渲染标题，```javascript 后回车创建代码块…', toolbarItems: [['heading', 'bold', 'italic', 'strike'], ['hr', 'quote'], ['ul', 'ol', 'task'], ['table', 'link'], ['code', 'codeblock']], hooks: { addImageBlobHook: () => false } });
+  const instance = new Editor({ el: host, height: '100%', initialEditType: sourceMode ? 'markdown' : 'wysiwyg', previewStyle: 'vertical', initialValue: content, language: 'zh-CN', usageStatistics: false, hideModeSwitch: true, theme, autofocus: false, plugins: [markdownShortcuts, documentImages(session.user.id, noteId, workspace)], placeholder: '直接输入 Markdown：## 完整标题后回车渲染标题，```javascript 后回车创建代码块…', toolbarItems: [['heading', 'bold', 'italic', 'strike'], ['hr', 'quote'], ['ul', 'ol', 'task'], ['table', 'link', 'image'], ['code', 'codeblock']], hooks: { addImageBlobHook: (blob, callback) => { uploadImage(noteId, blob, callback); } } });
   editors.set(workspace.activeId, { instance, host });
   return instance;
 }
@@ -79,7 +84,35 @@ function persist() {
   saver.enqueue(workspace);
   void saver.flush().catch(() => {});
 }
-$('#account').onclick = () => accountPanel(session, async () => { clearTimeout(saveTimer); saver.enqueue(workspace); await saver.flush(); });
+$('#account').onclick = () => accountPanel(session, async () => { await Promise.all(imageUploads); clearTimeout(saveTimer); saver.enqueue(workspace); await saver.flush(); });
+function uploadImage(noteId: string, blob: Blob, insert: (url: string, text?: string) => void) {
+  const promise = (async () => {
+    const note = workspace.notes.find(n => n.id === noteId);
+    if (!note || note.remote) throw new Error('请等待文档读取完成。');
+    const asset = await createImageAsset(note, blob);
+    if (!workspace.notes.some(n => n.id === noteId)) throw new Error('文档已删除，未插入图片。');
+    (workspace.images ??= []).push(asset);
+    // Commit the bytes before the editor requests the authenticated image URL.
+    saver.enqueue(workspace); await saver.flush();
+    if (!workspace.notes.some(n => n.id === noteId)) return;
+    insert(markdownImagePath(imageReference(asset)), blob instanceof File ? blob.name : '图片');
+    const ownEditor = editors.get(noteId)?.instance;
+    if (ownEditor) { note.content = ownEditor.getMarkdown(); note.updatedAt = Date.now(); }
+    persist(); notify(`图片已保存至 ${asset.folder}/`);
+  })().catch(error => notify((error as Error).message)).finally(() => imageUploads.delete(promise));
+  imageUploads.add(promise);
+}
+$('#insert-image').onclick = () => { if (active().remote) { notify('请等待读取完成。'); return; } $<HTMLInputElement>('#image-input').click(); };
+$<HTMLInputElement>('#image-input').onchange = event => {
+  const input = event.target as HTMLInputElement; const noteId = workspace.activeId; const ownEditor = editor;
+  for (const file of Array.from(input.files ?? [])) uploadImage(noteId, file, (imageUrl, altText) => ownEditor.exec('addImage', { imageUrl, altText }));
+  input.value = '';
+};
+async function readImage(relative: string, noteId = workspace.activeId) {
+  const response = await fetch(imageURL(session.user.id, noteId, relative), { credentials: 'same-origin', cache: 'no-store' });
+  if (!response.ok || !response.headers.get('Content-Type')?.startsWith('image/')) throw new Error('图片读取失败，请检查网络或 GitHub 令牌后重试。');
+  return new Uint8Array(await response.arrayBuffer());
+}
 function onChange() {
   if (loading || !editor || active().remote) return;
   active().content = editor.getMarkdown(); active().updatedAt = Date.now();
@@ -137,7 +170,7 @@ function setDocumentLoading(message: string | null, failed = false) {
 async function selectNote(id: string, expandFolders = true) {
   if (!workspace.notes.some(n => n.id === id)) return;
   const version = ++selectionVersion;
-  persist(); workspace.activeId = id;
+  if (workspace.notes.some(n => n.id === workspace.activeId)) persist(); workspace.activeId = id;
   selectedFolderId = active().folderId ?? null;
   if (expandFolders) revealFolder(selectedFolderId);
   $('#export-menu').hidden = true;
@@ -175,14 +208,26 @@ function createNote(content = '', title = '未命名文档', folderId = selected
   const note = { id: crypto.randomUUID(), title, content, folderId, updatedAt: Date.now() };
   workspace.notes.unshift(note); selectNote(note.id); $<HTMLInputElement>('#doc-title').focus(); $<HTMLInputElement>('#doc-title').select();
 }
-function download(content: string, name: string, type: string) { const url = URL.createObjectURL(new Blob([content], { type })); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
-function exportNote(format: string) {
+function download(content: string | Uint8Array<ArrayBuffer>, name: string, type: string) { const url = URL.createObjectURL(new Blob([content], { type })); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
+async function exportNote(format: string) {
   if (format === 'restore') { $<HTMLInputElement>('#backup-input').click(); return; }
   if (format === 'backup') { download(JSON.stringify(workspace, null, 2), 'mkdocsweb-backup.json', 'application/json'); return; }
   if (active().remote) { notify('请等待文档读取完成后再导出。'); return; }
+  if (format === 'bundle') {
+    const note = active();
+    try { const archive = await documentArchive(workspace, note, path => readImage(path, note.id)); download(new Uint8Array(archive), `${filename(note.title)}.zip`, 'application/zip'); notify('已打包 Markdown 与同级图片目录。'); } catch (error) { notify((error as Error).message); }
+    return;
+  }
   if (format === 'print') { if (sourceMode) $('#source-toggle').click(); window.print(); return; }
   if (format === 'md') download(active().content, `${filename(active().title)}.md`, 'text/markdown;charset=utf-8');
-  else { const html = DOMPurify.sanitize(editor.getHTML()); download(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(active().title)}</title><style>body{max-width:800px;margin:60px auto;padding:0 24px;font:17px/1.85 ${documentFont.family};color:#29342e}pre{overflow:auto;padding:20px;background:#f4f6f5}code{font-family:monospace}blockquote{border-left:3px solid #6a927b;margin-left:0;padding-left:20px;color:#66756c}table{border-collapse:collapse;width:100%}td,th{padding:10px;border:1px solid #ddd}img{max-width:100%}</style><body>${html}</body></html>`, `${filename(active().title)}.html`, 'text/html;charset=utf-8'); }
+  else { const fragment = document.createElement('div'); fragment.innerHTML = DOMPurify.sanitize(editor.getHTML());
+    try {
+      for (const image of fragment.querySelectorAll('img')) {
+        const src = image.getAttribute('src') ?? '';
+        if (src.startsWith('/api/images/')) { const response = await fetch(src, { credentials: 'same-origin', cache: 'no-store' }); if (!response.ok) throw new Error('图片读取失败，未导出不完整网页。'); const bytes = new Uint8Array(await response.arrayBuffer()); const mime = imageMime(bytes); if (!mime) throw new Error('图片格式无效。'); image.src = `data:${mime};base64,${encodeImage(bytes)}`; }
+      }
+    } catch (error) { notify((error as Error).message); return; }
+    const html = fragment.innerHTML; download(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(active().title)}</title><style>body{max-width:800px;margin:60px auto;padding:0 24px;font:17px/1.85 ${documentFont.family};color:#29342e}pre{overflow:auto;padding:20px;background:#f4f6f5}code{font-family:monospace}blockquote{border-left:3px solid #6a927b;margin-left:0;padding-left:20px;color:#66756c}table{border-collapse:collapse;width:100%}td,th{padding:10px;border:1px solid #ddd}img{max-width:100%}</style><body>${html}</body></html>`, `${filename(active().title)}.html`, 'text/html;charset=utf-8'); }
   notify('已导出，文字随你带走。');
 }
 $<HTMLSelectElement>('#font-select').onchange = event => {
@@ -295,6 +340,7 @@ $<HTMLInputElement>('#directory-input').onchange = async event => {
   const input = event.target as HTMLInputElement;
   const parentId = selectedFolderId;
   const files = Array.from(input.files ?? []).filter(file => /\.(md|markdown|txt)$/i.test(file.name));
+  const importedNotes: { note: Workspace['notes'][number]; path: string }[] = [];
   let imported = 0;
   let lastId: string | null = null;
   for (const file of files) {
@@ -304,15 +350,21 @@ $<HTMLInputElement>('#directory-input').onchange = async event => {
       const path = file.webkitRelativePath.split('/'); path.pop();
       const folderId = ensureFolderPath(workspace, path, parentId);
       const note = { id: crypto.randomUUID(), title: file.name.replace(/\.(md|markdown|txt)$/i, ''), content, folderId, updatedAt: Date.now() };
-      workspace.notes.push(note); lastId = note.id; imported++;
+      workspace.notes.push(note); importedNotes.push({ note, path: file.webkitRelativePath }); lastId = note.id; imported++;
     } catch { notify(`无法读取 ${file.name}`); }
+  }
+  for (const { note, path } of importedNotes) {
+    const prefix = path.replace(/\.(md|markdown|txt)$/i, '') + '.assets/';
+    for (const image of Array.from(input.files ?? []).filter(file => file.webkitRelativePath.startsWith(prefix) && !file.webkitRelativePath.slice(prefix.length).includes('/') && /\.(png|jpe?g|gif|webp)$/i.test(file.name))) {
+      try { (workspace.images ??= []).push(await createImageAsset(note, image, image.name)); } catch (error) { notify((error as Error).message); }
+    }
   }
   if (lastId) selectNote(lastId);
   else { renderNotes(); persist(); }
   notify(imported ? `已按目录层级导入 ${imported} 份文档。` : '文件夹中未找到可导入的 Markdown 或 TXT 文档。');
   input.value = '';
 };
-$('#doc-title').oninput = () => { active().title = $<HTMLInputElement>('#doc-title').value; active().updatedAt = Date.now(); $('#crumb-title').textContent = active().title || '未命名文档'; document.title = `${active().title || '未命名文档'} · MkDocs Web`; renderNotes(); persist(); };
+$('#doc-title').oninput = () => { active().title = $<HTMLInputElement>('#doc-title').value; const previous = active().content; renameNoteImages(workspace, active()); if (active().content !== previous) { loading = true; editor.setMarkdown(active().content, false); loading = false; } active().updatedAt = Date.now(); $('#crumb-title').textContent = active().title || '未命名文档'; document.title = `${active().title || '未命名文档'} · MkDocs Web`; renderNotes(); persist(); };
 $('#source-toggle').onclick = () => { sourceMode = !sourceMode; editor.changeMode(sourceMode ? 'markdown' : 'wysiwyg', true); $('#source-toggle').setAttribute('aria-pressed', String(sourceMode)); $('#source-toggle span').textContent = sourceMode ? '即时编辑' : '源码模式'; };
 $('#sidebar-toggle').onclick = () => document.body.classList.toggle(window.innerWidth <= 700 ? 'sidebar-open' : 'sidebar-hidden');
 $('#focus').onclick = () => { focusMode = !focusMode; document.body.classList.toggle('focus-mode', focusMode); $('#focus span').textContent = focusMode ? '退出专注' : '专注'; $('#focus').setAttribute('aria-pressed', String(focusMode)); };
@@ -336,7 +388,7 @@ $<HTMLInputElement>('#backup-input').onchange = async event => {
   input.value = '';
 };
 function confirmDialog(html: string): Promise<boolean> { $('#dialog-content').innerHTML = html; const dialog = $<HTMLDialogElement>('#dialog'); dialog.showModal(); return new Promise(resolve => dialog.addEventListener('close', () => resolve(dialog.returnValue === 'confirm'), { once: true })); }
-$('#delete-note').onclick = async () => { if (await confirmDialog(`<h2>删除这份文档？</h2><p>「${escape(active().title || '未命名文档')}」将从当前账号中删除。你可以先导出留存。</p>`)) { workspace.notes = workspace.notes.filter(n => n.id !== workspace.activeId); if (!workspace.notes.length) createNote(); else selectNote(workspace.notes[0].id); notify('文档已删除'); } };
+$('#delete-note').onclick = async () => { if (await confirmDialog(`<h2>删除这份文档？</h2><p>「${escape(active().title || '未命名文档')}」将从当前账号中删除。你可以先导出留存。</p>`)) { if (workspace.images) workspace.images = workspace.images.filter(a => a.noteId !== workspace.activeId); workspace.notes = workspace.notes.filter(n => n.id !== workspace.activeId); if (!workspace.notes.length) createNote(); else selectNote(workspace.notes[0].id); notify('文档已删除'); } };
 $('#shortcuts').onclick = () => confirmDialog('<h2>写作快捷键</h2><p>⌘ / Ctrl + Shift + N　新建文档</p><p>⌘ / Ctrl + K　搜索文档</p><p>⌘ / Ctrl + S　保存至服务器</p><p>⌘ / Ctrl + /　切换源码模式</p><p>⌘ / Ctrl + B　加粗</p><p>⌘ / Ctrl + I　斜体</p><p>Esc　退出专注模式</p>');
 $('#outline-list').onclick = event => { const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-heading]'); if (!button) return; if (sourceMode) $('#source-toggle').click(); const items = Array.from(document.querySelectorAll('.active-editor .toastui-editor-ww-container .toastui-editor-contents :is(h1,h2,h3,h4,h5,h6)')); items[Number(button.dataset.heading)]?.scrollIntoView({ behavior: 'smooth', block: 'start' }); $('#outline-list .current')?.classList.remove('current'); button.classList.add('current'); };
 document.addEventListener('keydown', event => {
@@ -349,6 +401,7 @@ document.addEventListener('keydown', event => {
 });
 window.addEventListener('beforeunload', event => {
   if (sessionRedirecting()) return;
+  if (imageUploads.size) { event.preventDefault(); event.returnValue = ''; return; }
   if (saveTimer || saver.dirty) { saver.enqueue(workspace); if (saver.dirty) { event.preventDefault(); event.returnValue = ''; } }
 });
 selectNote(workspace.activeId, false);
