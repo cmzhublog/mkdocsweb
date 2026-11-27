@@ -44,14 +44,14 @@ document.documentElement.dataset.theme = theme;
 $('#app').innerHTML = `
   <aside class="sidebar" aria-label="文档导航">
     <a class="brand" href="./" aria-label="MkDocs Web 首页"><span class="brand-mark">m<span>k</span></span><span>MkDocs <b>Web</b></span></a>
-    <label class="search">${icon('search')}<input id="search" placeholder="搜索你的文档…" aria-label="搜索文档"/><kbd>⌘ K</kbd></label>
+    <label class="search">${icon('search')}<input id="search" placeholder="搜索你的文档…" aria-label="搜索文档" title="搜索文件名和已缓存正文"/><kbd>⌘ K</kbd></label>
     <div class="section-label tree-root" data-drop-root><span>文件</span><div class="tree-actions"><button id="new-note" class="icon-button" aria-label="新建文件" title="新建文件（⌘ / Ctrl + Shift + N）">${icon('file-plus')}</button><button id="new-folder" class="icon-button" aria-label="新建文件夹" title="新建文件夹">${icon('folder-plus')}</button><button id="import-folder" class="icon-button" aria-label="导入文件夹" title="导入文件夹">${icon('folder-open')}</button></div></div>
     <nav id="note-list" role="tree" aria-label="文档文件夹"></nav>
     <div class="sidebar-bottom"><button id="git-repository" class="import-button">${icon('git-branch')} GitHub 仓库</button><button id="import" class="import-button">${icon('folder-open')} 导入 Markdown ${icon('upload')}</button><div class="sidebar-meta"><button id="theme" class="icon-button" aria-label="切换深色主题" title="切换深色主题">${icon('moon')}</button></div></div>
   </aside>
   <main class="main">
     <header class="topbar"><div class="breadcrumb"><button id="sidebar-toggle" class="icon-button" aria-label="显示或隐藏文档列表">${icon('panel-left')}</button><span class="crumb-parent">我的文档</span><span class="slash">/</span><span id="crumb-title"></span></div><div class="top-actions"><span id="save-state" role="status"></span><button id="focus" class="text-button">${icon('maximize')}<span>专注</span></button><div class="export-wrap"><button id="export" class="export-button" aria-expanded="false">${icon('download')} 导出 ${icon('chevron-down')}</button><div id="export-menu" class="dropdown" hidden><button data-export="md">Markdown (.md)</button><button data-export="html">网页 (.html)</button><button data-export="print">打印 / 存为 PDF</button><button data-export="backup">备份所有文档 (.json)</button><button data-export="restore">恢复文档备份</button></div></div></div></header>
-    <div class="work-area"><section class="writing-pane" aria-label="写作区"><div class="document-heading"><div class="eyebrow">你的文字，值得被认真对待</div><div class="title-row"><input id="doc-title" aria-label="文档标题" maxlength="100"/><button id="delete-note" class="icon-button" title="删除文档" aria-label="删除当前文档">${icon('trash-2')}</button></div><div class="document-meta">${icon('file-text')}<span>Markdown 文档</span><span class="meta-dot">·</span><span id="updated-at"></span></div></div><div class="editor-bar"><span class="editor-bar-label">${icon('pen-line')} 开始书写</span><div class="writing-options"><label class="font-picker"><span>字体</span><select id="font-select" aria-label="文档字体" title="使用设备已安装的字体">${fontOptions.map(font => `<option value="${font.id}" ${font.id === documentFont.id ? 'selected' : ''}>${font.label}</option>`).join('')}</select>${icon('chevron-down')}</label><button id="source-toggle" class="mode-toggle" aria-pressed="false">${icon('code-xml')}<span>源码模式</span></button></div></div><div id="editor"></div></section><aside class="outline" aria-label="文档大纲"><div class="outline-heading">${icon('list-tree')} 文档大纲</div><nav id="outline-list"></nav><div class="outline-tip">${icon('sparkles')}<p>让文字回归文字。<br/>让思绪自由流淌。</p><span>WRITE SOMETHING GOOD.</span></div></aside></div>
+    <div class="work-area"><section class="writing-pane" aria-label="写作区"><div class="document-heading"><div class="eyebrow">你的文字，值得被认真对待</div><div class="title-row"><input id="doc-title" aria-label="文档标题" maxlength="100"/><button id="delete-note" class="icon-button" title="删除文档" aria-label="删除当前文档">${icon('trash-2')}</button></div><div class="document-meta">${icon('file-text')}<span>Markdown 文档</span><span class="meta-dot">·</span><span id="updated-at"></span></div></div><div class="editor-bar"><span class="editor-bar-label">${icon('pen-line')} 开始书写</span><div class="writing-options"><label class="font-picker"><span>字体</span><select id="font-select" aria-label="文档字体" title="使用设备已安装的字体">${fontOptions.map(font => `<option value="${font.id}" ${font.id === documentFont.id ? 'selected' : ''}>${font.label}</option>`).join('')}</select>${icon('chevron-down')}</label><button id="source-toggle" class="mode-toggle" aria-pressed="false">${icon('code-xml')}<span>源码模式</span></button></div></div><div id="editor"><div id="document-load-state" class="document-load-state" hidden><p id="document-load-message" role="status"></p><button id="retry-note" hidden>重试读取</button></div></div></section><aside class="outline" aria-label="文档大纲"><div class="outline-heading">${icon('list-tree')} 文档大纲</div><nav id="outline-list"></nav><div class="outline-tip">${icon('sparkles')}<p>让文字回归文字。<br/>让思绪自由流淌。</p><span>WRITE SOMETHING GOOD.</span></div></aside></div>
     <footer class="statusbar"><div><span class="status-dot"></span><span id="footer-state">所有更改已保存至本地</span></div><div><span id="word-count"></span><span class="status-divider">|</span><span id="read-time"></span><span class="status-divider">|</span><span>UTF-8</span><span class="status-divider">|</span><button id="shortcuts">${icon('keyboard')} 快捷键</button></div></footer>
   </main><input id="file-input" type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" multiple hidden/><input id="directory-input" type="file" webkitdirectory multiple hidden/><input id="backup-input" type="file" accept=".json,application/json" hidden/><div id="toast" role="status" hidden></div><dialog id="dialog"><form method="dialog"><div id="dialog-content"></div><div class="dialog-actions"><button value="cancel">取消</button><button value="confirm" class="primary">确定</button></div></form></dialog>`;
 
@@ -64,6 +64,7 @@ function makeEditor(content: string) {
 }
 let editor = makeEditor(active().content);
 let loading = false;
+let selectionVersion = 0;
 let saveTimer: ReturnType<typeof setTimeout>;
 let toastTimer: ReturnType<typeof setTimeout>;
 editor.on('change', onChange);
@@ -81,7 +82,7 @@ function persist() {
   catch { setSaveState(false); notify('本地存储不可用或空间已满，请导出备份。'); return false; }
 }
 function onChange() {
-  if (loading || !editor) return;
+  if (loading || !editor || active().remote) return;
   active().content = editor.getMarkdown(); active().updatedAt = Date.now();
   renderStats(); renderOutline();
   $('#save-state').textContent = '保存中…';
@@ -89,6 +90,7 @@ function onChange() {
   clearTimeout(saveTimer); saveTimer = setTimeout(() => { persist(); renderNotes(); }, 350);
 }
 function renderStats() {
+  if (active().remote) { $('#word-count').textContent = '内容待读取'; $('#read-time').textContent = '按需加载'; $('#updated-at').textContent = 'GitHub 文档'; return; }
   const stats = readingStats(active().content);
   $('#word-count').textContent = `${stats.characters.toLocaleString()} 字符`;
   $('#read-time').textContent = `约 ${stats.minutes} 分钟阅读`;
@@ -121,25 +123,55 @@ function revealFolder(id: string | null) {
 }
 
 function renderOutline() {
+  if (active().remote) { $('#outline-list').innerHTML = '<p class="empty-search">读取文档后显示大纲</p>'; return; }
   const list = headings(active().content);
   $('#outline-list').innerHTML = list.map((h, index) => `<button data-heading="${index}" style="--level:${Math.min(h.level, 4)}" class="${index === 0 ? 'current' : ''}">${escape(h.text)}</button>`).join('') || '<p class="empty-search">添加标题后，大纲将显示在这里</p>';
 }
-function selectNote(id: string, expandFolders = true) {
-  persist(); workspace.activeId = id; selectedFolderId = active().folderId ?? null; if (expandFolders) revealFolder(selectedFolderId); loading = true;
-  // Keep one editor per opened note: its undo history and delayed UI callbacks stay isolated.
+function setDocumentLoading(message: string | null, failed = false) {
+  $('#editor').classList.toggle('document-loading', message !== null);
+  $('#document-load-state').hidden = message === null;
+  $('#document-load-message').textContent = message ?? '';
+  $('#retry-note').hidden = !failed;
+  $<HTMLButtonElement>('#source-toggle').disabled = message !== null;
+  $('.writing-pane').setAttribute('aria-busy', String(message !== null && !failed));
+}
+async function selectNote(id: string, expandFolders = true) {
+  if (!workspace.notes.some(n => n.id === id)) return;
+  const version = ++selectionVersion;
+  persist(); workspace.activeId = id;
+  selectedFolderId = active().folderId ?? null;
+  if (expandFolders) revealFolder(selectedFolderId);
+  $('#export-menu').hidden = true;
+  $<HTMLInputElement>('#doc-title').value = active().title;
+  $('#crumb-title').textContent = active().title || '未命名文档';
+  document.title = `${active().title || '未命名文档'} · MkDocs Web`;
+  renderNotes(); renderStats(); renderOutline(); persist();
+  const needsContent = !!active().remote;
+  if (needsContent) {
+    setDocumentLoading('正在从 GitHub 读取这份文档…');
+    try { await gitPanel.loadNote(id); persist(); }
+    catch (error) {
+      if (version === selectionVersion) setDocumentLoading(`${error instanceof Error ? error.message : '读取失败。'} 私有仓库可在 GitHub 仓库面板填写令牌后重试。`, true);
+      return;
+    }
+    if (version !== selectionVersion || workspace.activeId !== id) return;
+  }
+  loading = true;
+  // Each opened note retains its own editor and undo history. Unopened notes have no editor.
   const existing = editors.get(id);
-  if (existing) editor = existing.instance;
+  if (existing) { editor = existing.instance; if (needsContent) editor.setMarkdown(active().content, false); }
   else { editor = makeEditor(active().content); editor.on('change', onChange); }
   for (const [noteId, entry] of editors) {
     entry.host.hidden = noteId !== id;
     entry.host.classList.toggle('active-editor', noteId === id);
   }
+  setDocumentLoading(null);
   window.dispatchEvent(new Event('resize'));
   editor.changeMode(sourceMode ? 'markdown' : 'wysiwyg', true); editor.moveCursorToStart(false); loading = false;
-  $<HTMLInputElement>('#doc-title').value = active().title; $('#crumb-title').textContent = active().title || '未命名文档';
-  document.title = `${active().title || '未命名文档'} · MkDocs Web`;
   renderNotes(); renderStats(); renderOutline(); persist();
 }
+$('#retry-note').onclick = () => selectNote(workspace.activeId);
+
 function createNote(content = '', title = '未命名文档', folderId = selectedFolderId) {
   const note = { id: crypto.randomUUID(), title, content, folderId, updatedAt: Date.now() };
   workspace.notes.unshift(note); selectNote(note.id); $<HTMLInputElement>('#doc-title').focus(); $<HTMLInputElement>('#doc-title').select();
@@ -148,6 +180,7 @@ function download(content: string, name: string, type: string) { const url = URL
 function exportNote(format: string) {
   if (format === 'restore') { $<HTMLInputElement>('#backup-input').click(); return; }
   if (format === 'backup') { download(JSON.stringify(workspace, null, 2), 'mkdocsweb-backup.json', 'application/json'); return; }
+  if (active().remote) { notify('请等待文档读取完成后再导出。'); return; }
   if (format === 'print') { if (sourceMode) $('#source-toggle').click(); window.print(); return; }
   if (format === 'md') download(active().content, `${filename(active().title)}.md`, 'text/markdown;charset=utf-8');
   else { const html = DOMPurify.sanitize(editor.getHTML()); download(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(active().title)}</title><style>body{max-width:800px;margin:60px auto;padding:0 24px;font:17px/1.85 ${documentFont.family};color:#29342e}pre{overflow:auto;padding:20px;background:#f4f6f5}code{font-family:monospace}blockquote{border-left:3px solid #6a927b;margin-left:0;padding-left:20px;color:#66756c}table{border-collapse:collapse;width:100%}td,th{padding:10px;border:1px solid #ddd}img{max-width:100%}</style><body>${html}</body></html>`, `${filename(active().title)}.html`, 'text/html;charset=utf-8'); }
@@ -165,7 +198,7 @@ const gitPanel = createGitPanel(workspace, {
       loading = true;
       for (const [id, entry] of editors) {
         const note = workspace.notes.find(n => n.id === id);
-        if (note) entry.instance.setMarkdown(note.content, false);
+        if (note && !note.remote) entry.instance.setMarkdown(note.content, false);
       }
       loading = false;
     }

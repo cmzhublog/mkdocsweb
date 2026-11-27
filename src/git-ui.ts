@@ -1,5 +1,5 @@
 import type { Workspace } from './documents';
-import { applySnapshot, attachRepository, GitHubClient, gitChanges, parseCloneUrl, repositoryFiles, repositoryPath } from './github';
+import { applySnapshot, attachRepository, GitHubClient, GitDocumentLoader, gitChanges, parseCloneUrl, repositoryFiles, repositoryPath } from './github';
 import type { GitChange, GitRepository } from './git-types';
 
 const esc = (value: string) => value.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
@@ -12,6 +12,8 @@ export function createGitPanel(workspace: Workspace, hooks: {
   const dialog = document.createElement('dialog'); dialog.className = 'git-dialog';
   document.body.append(dialog);
   const tokens = new Map<string, string>();
+  const tokenKey = (r: { owner: string; repo: string }) => `${r.owner.toLowerCase()}/${r.repo.toLowerCase()}`;
+  const loader = new GitDocumentLoader(workspace, repository => new GitHubClient(tokens.get(tokenKey(repository)) ?? ''));
   let selectedId = '';
   let busy = false;
   let reviewed: GitChange[] | null = null;
@@ -22,7 +24,7 @@ export function createGitPanel(workspace: Workspace, hooks: {
     el.textContent = message; el.classList.toggle('git-error', error);
   };
   function tokenFor(repository: { owner: string; repo: string }) {
-    const key = `${repository.owner.toLowerCase()}/${repository.repo.toLowerCase()}`;
+    const key = tokenKey(repository);
     const token = field('git-token').value.trim() || tokens.get(key) || '';
     if (token) tokens.set(key, token);
     return token;
@@ -55,6 +57,7 @@ export function createGitPanel(workspace: Workspace, hooks: {
           const pre = document.createElement('pre'); pre.textContent = content.slice(0, 12000) + (content.length > 12000 ? '\n…预览已截断' : '');
           container.append(heading, pre);
         }
+        if (!container.childNodes.length) container.textContent = change.kind === 'deleted' ? '仅删除此路径，未下载未打开文档的原文。' : '文档内容未修改，提交沿用仓库已有文件内容。';
       };
     });
     dialog.querySelector<HTMLButtonElement>('#git-push')!.disabled = !changes.length;
@@ -73,14 +76,14 @@ export function createGitPanel(workspace: Workspace, hooks: {
     if (!repository) {
       dialog.querySelector<HTMLButtonElement>('#git-clone')!.onclick = () => run(async () => {
         const parsed = parseCloneUrl(field('git-url').value);
-        status('正在读取仓库目录和 Markdown 文档…');
+        status('正在读取仓库目录…');
         const snapshot = await new GitHubClient(tokenFor(parsed)).clone(field('git-url').value, field('git-branch').value);
         if (workspace.repositories?.some(r => r.owner.toLowerCase() === snapshot.owner.toLowerCase() && r.repo.toLowerCase() === snapshot.repo.toLowerCase() && r.branch === snapshot.branch)) throw new Error('该仓库分支已经导入，请切换到已有连接进行拉取。');
         const connected = attachRepository(workspace, snapshot);
         selectedId = connected.id;
-        const first = workspace.notes.find(n => repositoryPath(workspace, connected, n) !== null);
-        hooks.changed(first?.id, connected.rootFolderId, true);
-        render(); status(`已导入 ${snapshot.files.length} 份文档，目录层级已保留。`);
+        hooks.changed(undefined, connected.rootFolderId);
+        render(); dialog.close();
+        hooks.notify(`已载入 ${snapshot.files.length} 份文档的目录，点击文件时读取内容。`);
       });
     } else {
       dialog.querySelector<HTMLButtonElement>('#git-review')!.onclick = () => {
@@ -93,9 +96,8 @@ export function createGitPanel(workspace: Workspace, hooks: {
         const snapshot = await new GitHubClient(tokenFor(repository)).clone(`https://github.com/${repository.owner}/${repository.repo}.git`, repository.branch);
         if (gitChanges(workspace, repository).length) throw new Error('拉取期间文档发生了变化，本地内容未被覆盖。');
         applySnapshot(workspace, repository, snapshot);
-        const first = workspace.notes.find(n => repositoryPath(workspace, repository, n) !== null);
-        hooks.changed(first?.id, repository.rootFolderId, true);
-        render(); status('已拉取最新文档。');
+        hooks.changed(undefined, repository.rootFolderId, true);
+        render(); status('已更新目录；已打开且未变更的文档继续使用缓存。');
       });
       dialog.querySelector<HTMLButtonElement>('#git-push')!.onclick = () => run(async () => {
         const changes = gitChanges(workspace, repository);
@@ -104,9 +106,14 @@ export function createGitPanel(workspace: Workspace, hooks: {
         status('正在检查远端版本并提交文档…');
         const result = await new GitHubClient(tokenFor(repository)).push(repository, changes, field('git-message').value);
         const oldPaths = new Set(repository.files.map(f => f.path));
-        repository.files = outgoing.map(f => ({ ...f, sha: '' }));
+        repository.files = outgoing.map(f => ({ ...f, sha: f.sha ?? '' }));
         repository.allPaths = [...repository.allPaths.filter(path => !oldPaths.has(path)), ...outgoing.map(f => f.path)];
         repository.headSha = result.headSha; repository.treeSha = result.treeSha;
+        for (const note of workspace.notes) {
+          if (note.remote?.repositoryId !== repository.id) continue;
+          const path = repositoryPath(workspace, repository, note);
+          if (path !== null) note.remote.path = path;
+        }
         hooks.changed();
         render(); status(`已 push 到 ${repository.branch}，提交 ${result.headSha.slice(0, 7)}。`);
         hooks.notify('文档已提交并 push 到 GitHub。');
@@ -114,8 +121,14 @@ export function createGitPanel(workspace: Workspace, hooks: {
     }
   }
   dialog.addEventListener('cancel', event => { if (busy) event.preventDefault(); });
-  dialog.addEventListener('close', () => { const password = dialog.querySelector<HTMLInputElement>('#git-token'); if (password) password.value = ''; });
+  dialog.addEventListener('close', () => {
+    const password = dialog.querySelector<HTMLInputElement>('#git-token');
+    const selected = repo();
+    if (password?.value.trim() && selected) tokens.set(tokenKey(selected), password.value.trim());
+    if (password) password.value = '';
+  });
   return {
+    loadNote(noteId: string) { return loader.load(noteId); },
     open(folderId: string | null, noteId: string) {
       const note = workspace.notes.find(n => n.id === noteId);
       const findRepository = (id: string | null | undefined): GitRepository | undefined => {

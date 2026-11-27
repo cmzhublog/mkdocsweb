@@ -51,3 +51,9 @@
 #git-changes{max-height:300px;overflow:auto;margin:12px 0}.git-change{border-bottom:1px solid var(--line);font-size:13px}.git-change summary{display:flex;align-items:center;gap:10px;padding:10px 4px;cursor:pointer}.git-change summary>span:last-child{overflow-wrap:anywhere;min-width:0}.git-change-kind{font-size:12px;flex-shrink:0;border-radius:4px;padding:2px 6px;background:var(--green-soft);color:var(--green)}.git-change-kind.deleted{background:#c4564618;color:#c45646}.git-change-kind.modified{background:#b1852e18;color:#aa8236}
 .git-change-content{padding:0 5px 12px}.git-change-content p{font-size:12px;margin:8px 0}.git-change-content pre{background:var(--code);padding:12px;border-radius:5px;max-height:220px;overflow:auto;font:12px/1.7 monospace;white-space:pre-wrap;overflow-wrap:anywhere}
 @media(max-width:700px){.git-dialog{padding:20px;max-height:94dvh}.git-heading h2{font-size:19px}}
+
+#editor{position:relative}
+.document-loading>.editor-instance{visibility:hidden;pointer-events:none}
+.document-load-state{position:absolute;inset:0;z-index:25;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:var(--paper);padding:30px;text-align:center;font-size:14px;color:var(--muted)}
+.document-load-state p{max-width:480px;line-height:1.9;overflow-wrap:anywhere}
+.document-load-state button{border:1px solid var(--line);border-radius:6px;padding:8px 16px;color:var(--green);font:inherit}
