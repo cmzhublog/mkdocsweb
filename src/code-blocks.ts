@@ -1,3 +1,4 @@
+import { createElement, Copy, Check, X } from 'lucide';
 import type { PluginContext, PluginInfo } from '@toast-ui/editor';
 import codeSyntaxHighlight from '@toast-ui/editor-plugin-code-syntax-highlight';
 import { Prism, highlightCode } from './code-highlighting.ts';
@@ -30,17 +31,26 @@ function copyButton(read: () => string) {
   button.type = 'button';
   button.className = 'code-copy';
   button.contentEditable = 'false';
-  const feedback = (symbol: string, label: string) => { button.textContent = symbol; button.title = label; button.setAttribute('aria-label', label); };
-  feedback('📋', '复制代码');
+  const tooltip = document.createElement('span');
+  tooltip.className = 'code-copy-tooltip';
+  tooltip.setAttribute('aria-hidden', 'true');
+  const feedback = (status: 'copy' | 'success' | 'error', label: string) => {
+    const icon = createElement(status === 'success' ? Check : status === 'error' ? X : Copy);
+    icon.setAttribute('aria-hidden', 'true');
+    button.replaceChildren(icon, tooltip);
+    tooltip.textContent = label;
+    button.setAttribute('aria-label', status === 'copy' ? '复制代码' : label);
+  };
+  feedback('copy', '复制');
   button.setAttribute('aria-live', 'polite');
   let timer: ReturnType<typeof setTimeout> | undefined;
   button.onmousedown = event => event.preventDefault();
   button.onclick = async event => {
     event.preventDefault(); event.stopPropagation();
-    try { await copyCode(read()); feedback('✅', '已复制代码'); }
-    catch { feedback('❌', '复制失败，请选中代码手动复制'); }
+    try { await copyCode(read()); feedback('success', '已复制'); }
+    catch { feedback('error', '复制失败，请选中代码手动复制'); }
     clearTimeout(timer);
-    timer = setTimeout(() => feedback('📋', '复制代码'), 2000);
+    timer = setTimeout(() => feedback('copy', '复制'), 2000);
   };
   return { button, destroy: () => clearTimeout(timer) };
 }

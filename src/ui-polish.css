@@ -110,7 +110,7 @@ button:disabled { opacity:.5; }
   top:9px; left:auto; right:52px; height:32px; max-width:calc(100% - 72px); overflow:hidden;
   color:var(--muted); background-color:transparent; font:12px/32px system-ui; padding:0 28px 0 8px;
 }
-#app .toastui-editor-contents .code-copy { display:inline-flex; align-items:center; justify-content:center; top:9px; right:10px; width:32px; height:32px; padding:0; border:1px solid var(--line); border-radius:5px; box-shadow:none; font:16px/1 system-ui; }
+#app .toastui-editor-contents .code-copy { display:inline-flex; align-items:center; justify-content:center; top:9px; right:10px; width:32px; height:32px; padding:0; border:1px solid var(--line); border-radius:50%; box-shadow:none; font:13px/1 system-ui; }
 #app .code-preview-shell:before { top:9px; left:auto; right:52px; max-width:calc(100% - 72px); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:12px/32px system-ui; }
 #app .toastui-editor-contents blockquote { border-left-color:var(--ui-accent-line)!important; }
 #app .toastui-editor-contents blockquote,#app .toastui-editor-contents blockquote p { color:var(--muted)!important; }
@@ -140,4 +140,17 @@ button:disabled { opacity:.5; }
 @media print {
   :root { --ink:#222; --paper:#fff; --code:#f4f6f5; --line:#ddd; }
   #app .toastui-editor-contents .code-copy { display:none!important; }
+}
+
+/* Monochrome copy icon: match code text and reveal its label after 500ms. */
+#app .toastui-editor-contents .code-copy>svg { width:1em; height:1em; flex:none; stroke:currentColor; }
+#app .code-copy-tooltip {
+  position:absolute; top:calc(100% + 6px); right:0; z-index:5;
+  padding:6px 9px; border:1px solid var(--line); border-radius:5px;
+  background:var(--ui-raised); color:var(--ink); box-shadow:0 2px 8px #0001;
+  font:12px/1.4 system-ui; white-space:nowrap; pointer-events:none;
+  opacity:0; visibility:hidden; transition:none;
+}
+#app .code-copy:hover>.code-copy-tooltip,#app .code-copy:focus-visible>.code-copy-tooltip {
+  opacity:1; visibility:visible; transition:opacity 0s .5s,visibility 0s .5s;
 }
