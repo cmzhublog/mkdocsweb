@@ -210,3 +210,17 @@ button:disabled { opacity:.5; }
 .git-review-summary { position:sticky; top:0; z-index:2; }
 .git-diff-chevron { display:inline-flex; flex:none; width:10px; font:18px/18px system-ui; color:var(--muted); }
 .git-change[open]>summary>.git-diff-chevron { transform:rotate(90deg); }
+
+/* File actions share each existing compact tree row, without nested buttons. */
+#app #note-list .note-file-row { display:flex; align-items:center; height:34px; margin:1px 0; width:max(100%,calc(var(--depth)*14px + 135px)); border-radius:5px; }
+#app #note-list .note-file-row:hover { background:var(--hover); }
+#app #note-list .note-file-row.active { background:var(--green-soft); }
+#app #note-list .note-file-row>.note-item { flex:1; width:0; min-width:0; margin:0; padding-right:4px; background:transparent; }
+#app .note-file-trigger { display:inline-flex; flex:none; align-items:center; justify-content:center; width:28px; height:28px; margin-right:3px; padding:0; border-radius:4px; color:var(--muted); }
+#app .note-file-trigger>.lucide { width:13px; height:13px; }
+#app .note-file-trigger:hover,#app .note-file-trigger[aria-expanded=true] { color:var(--green); background:var(--paper); }
+.note-file-menu { position:fixed; z-index:85; min-width:170px; max-width:calc(100vw - 16px); border:1px solid var(--line); padding:5px; border-radius:7px; background:var(--ui-raised); color:var(--ink); box-shadow:var(--ui-shadow); }
+.note-file-menu button { display:flex; align-items:center; gap:8px; padding:9px 11px; width:100%; border-radius:4px; color:var(--ui-danger); text-align:left; font:13px/1.5 system-ui; }
+.note-file-menu button>svg { width:15px; height:15px; flex:none; }
+.note-file-menu button:hover,.note-file-menu button:focus-visible { background:var(--ui-danger-soft); }
+@media print { .note-file-menu { display:none!important; } }

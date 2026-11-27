@@ -8,6 +8,7 @@ import { canMoveFolder, ensureFolderPath, mergeWorkspace, filename, headings, pa
 import { welcome } from './welcome';
 import { markdownShortcuts } from './markdown-shortcuts';
 import { clickToWrite } from './click-to-write';
+import { createFileMenu } from './file-menu';
 import { createGitPanel } from './git-ui';
 import { WorkspaceSaver } from './autosave';
 import { accountPanel } from './account';
@@ -163,8 +164,9 @@ function renderNotes() {
     return folders.map(f => {
       const expanded = !!term || !f.collapsed;
       return `<div role="none"><button role="treeitem" aria-expanded="${expanded}" aria-level="${depth + 1}" class="folder-row ${selectedFolderId === f.id ? 'selected-folder' : ''}" data-folder="${escape(f.id)}" draggable="true" title="${escape(f.name)}（双击重命名）" style="--depth:${depth}">${icon(expanded ? 'chevron-down' : 'chevron-right', 'tree-chevron')}${icon(expanded ? 'folder-open' : 'folder')}<span class="tree-title">${escape(f.name)}</span></button>${expanded ? `<div role="group">${renderBranch(f.id, depth + 1)}</div>` : ''}</div>`;
-    }).join('') + files.map(n => `<button role="treeitem" aria-level="${depth + 1}" aria-selected="${n.id === workspace.activeId}" class="note-item ${n.id === workspace.activeId ? 'active' : ''}" data-id="${escape(n.id)}" draggable="true" title="${escape(n.title || '未命名文档')}" style="--depth:${depth}">${icon('file-text')}<span class="tree-title">${escape(n.title || '未命名文档')}</span></button>`).join('');
+    }).join('') + files.map(n => `<div class="note-file-row ${n.id === workspace.activeId ? 'active' : ''}" role="none" style="--depth:${depth}"><button role="treeitem" aria-level="${depth + 1}" aria-selected="${n.id === workspace.activeId}" class="note-item ${n.id === workspace.activeId ? 'active' : ''}" data-id="${escape(n.id)}" draggable="true" title="${escape(n.title || '未命名文档')}">${icon('file-text')}<span class="tree-title">${escape(n.title || '未命名文档')}</span></button><button type="button" class="note-file-trigger" data-note-menu="${escape(n.id)}" aria-label="${escape(n.title || '未命名文档')}的文件操作" aria-haspopup="menu" aria-expanded="false" draggable="false" title="文件操作">${icon('chevron-down')}</button></div>`).join('');
   };
+  fileMenu.close();
   $('#note-list').innerHTML = renderBranch(null, 0) || '<p class="empty-search">没有找到文档</p>';
   refreshIcons();
 }
@@ -277,10 +279,12 @@ const gitPanel = createGitPanel(workspace, {
   },
 });
 $('#git-repository').onclick = () => gitPanel.open(selectedFolderId, workspace.activeId);
+const fileMenu = createFileMenu($('#note-list'), id => { void deleteNote(id); });
 $('#new-note').onclick = () => createNote();
 $('#search').oninput = renderNotes;
 $('#note-list').onclick = event => {
   const target = event.target as HTMLElement;
+  if (target.closest('[data-note-menu]')) return;
   const file = target.closest<HTMLButtonElement>('[data-id]');
   if (file) { selectNote(file.dataset.id!); return; }
   const row = target.closest<HTMLButtonElement>('[data-folder]');
@@ -313,6 +317,7 @@ $('.tree-root').onclick = event => {
 };
 $('.sidebar').addEventListener('dragstart', event => {
   const drag = event as DragEvent;
+  if ((drag.target as HTMLElement).closest('[data-note-menu]')) { drag.preventDefault(); return; }
   const row = (drag.target as HTMLElement).closest<HTMLElement>('[data-id], [data-folder]');
   if (row && drag.dataTransfer) {
     drag.dataTransfer.effectAllowed = 'move';
@@ -411,7 +416,23 @@ $<HTMLInputElement>('#backup-input').onchange = async event => {
   input.value = '';
 };
 function confirmDialog(html: string): Promise<boolean> { $('#dialog-content').innerHTML = html; const dialog = $<HTMLDialogElement>('#dialog'); dialog.showModal(); return new Promise(resolve => dialog.addEventListener('close', () => resolve(dialog.returnValue === 'confirm'), { once: true })); }
-$('#delete-note').onclick = async () => { if (await confirmDialog(`<h2>删除这份文档？</h2><p>「${escape(active().title || '未命名文档')}」将从当前账号中删除。你可以先导出留存。</p>`)) { if (workspace.images) workspace.images = workspace.images.filter(a => a.noteId !== workspace.activeId); workspace.notes = workspace.notes.filter(n => n.id !== workspace.activeId); if (!workspace.notes.length) createNote(); else selectNote(workspace.notes[0].id); notify('文档已删除'); } };
+async function deleteNote(id: string) {
+  const note = workspace.notes.find(n => n.id === id);
+  if (!note) return;
+  if (!await confirmDialog(`<h2>删除这份文档？</h2><p>「${escape(note.title || '未命名文档')}」将从当前账号中删除。你可以先导出留存。</p>`)) return;
+  if (!workspace.notes.some(n => n.id === id)) return;
+  const deletingActive = workspace.activeId === id;
+  if (workspace.images) workspace.images = workspace.images.filter(a => a.noteId !== id);
+  workspace.notes = workspace.notes.filter(n => n.id !== id);
+  const cached = editors.get(id); editors.delete(id);
+  cached?.instance.off('change');
+  cached?.instance.destroy(); cached?.host.remove();
+  if (!workspace.notes.length) createNote();
+  else if (deletingActive) void selectNote(workspace.notes[0].id);
+  else { renderNotes(); persist(); }
+  notify('文档已删除');
+}
+$('#delete-note').onclick = () => { void deleteNote(workspace.activeId); };
 $('#shortcuts').onclick = () => confirmDialog('<h2>写作快捷键</h2><p>⌘ / Ctrl + Shift + N　新建文档</p><p>⌘ / Ctrl + K　搜索文档</p><p>⌘ / Ctrl + S　保存至服务器</p><p>⌘ / Ctrl + /　切换源码模式</p><p>⌘ / Ctrl + B　加粗</p><p>⌘ / Ctrl + I　斜体</p><p>Esc　退出专注模式</p>');
 $('#outline-list').onclick = event => { const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-heading]'); if (!button) return; if (sourceMode) $('#source-toggle').click(); const items = Array.from(document.querySelectorAll('.active-editor .toastui-editor-ww-container .toastui-editor-contents :is(h1,h2,h3,h4,h5,h6)')); items[Number(button.dataset.heading)]?.scrollIntoView({ behavior: 'smooth', block: 'start' }); $('#outline-list .current')?.classList.remove('current'); button.classList.add('current'); };
 document.addEventListener('keydown', event => {
