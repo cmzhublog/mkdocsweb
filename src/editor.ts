@@ -14,6 +14,7 @@ import { sessionRedirecting, type Session } from './api';
 import { createImageAsset, encodeImage, imageMime, imageReference, imageURL, markdownImagePath, renameNoteImages } from './images';
 import { documentImages } from './image-editor';
 import { documentArchive } from './image-export';
+import { createEditorToolbar } from './editor-toolbar';
 import './style.css';
 
 const icons = { GitBranch, FilePlus, Search, FolderOpen, Folder, FolderPlus, ChevronRight, Upload, HardDrive, Moon, PanelLeft, Maximize, Download, ChevronDown, FileText, Trash2, PenLine, CodeXml, ListTree, Sparkles, Keyboard, CheckCheck, CircleAlert, Sun };
@@ -51,20 +52,29 @@ $('#app').innerHTML = `
   </aside>
   <main class="main">
     <header class="topbar"><div class="breadcrumb"><button id="sidebar-toggle" class="icon-button" aria-label="显示或隐藏文档列表">${icon('panel-left')}</button><span class="crumb-parent">我的文档</span><span class="slash">/</span><span id="crumb-title"></span></div><div class="top-actions"><span id="save-state" role="status"></span><button id="focus" class="text-button">${icon('maximize')}<span>专注</span></button><div class="export-wrap"><button id="export" class="export-button" aria-expanded="false">${icon('download')} 导出 ${icon('chevron-down')}</button><div id="export-menu" class="dropdown" hidden><button data-export="md">Markdown (.md)</button><button data-export="bundle">文档与图片 (.zip)</button><button data-export="html">网页 (.html)</button><button data-export="print">打印 / 存为 PDF</button><button data-export="backup">备份所有文档 (.json)</button><button data-export="restore">恢复文档备份</button></div></div></div></header>
-    <div class="work-area"><section class="writing-pane" aria-label="写作区"><div class="document-heading"><div class="eyebrow">你的文字，值得被认真对待</div><div class="title-row"><input id="doc-title" aria-label="文档标题" maxlength="100"/><button id="delete-note" class="icon-button" title="删除文档" aria-label="删除当前文档">${icon('trash-2')}</button></div><div class="document-meta">${icon('file-text')}<span>Markdown 文档</span><span class="meta-dot">·</span><span id="updated-at"></span></div></div><div class="editor-bar"><span class="editor-bar-label">${icon('pen-line')} 开始书写</span><div class="writing-options"><button id="insert-image" class="text-button" title="图片保存在当前文档同名 .assets 目录">插入图片</button><label class="font-picker"><span>字体</span><select id="font-select" aria-label="文档字体" title="使用设备已安装的字体">${fontOptions.map(font => `<option value="${font.id}" ${font.id === documentFont.id ? 'selected' : ''}>${font.label}</option>`).join('')}</select>${icon('chevron-down')}</label><button id="source-toggle" class="mode-toggle" aria-pressed="false">${icon('code-xml')}<span>源码模式</span></button></div></div><div id="editor"><div id="document-load-state" class="document-load-state" hidden><p id="document-load-message" role="status"></p><button id="retry-note" hidden>重试读取</button></div></div></section><aside class="outline" aria-label="文档大纲"><div class="outline-heading">${icon('list-tree')} 文档大纲</div><nav id="outline-list"></nav><div class="outline-tip">${icon('sparkles')}<p>让文字回归文字。<br/>让思绪自由流淌。</p><span>WRITE SOMETHING GOOD.</span></div></aside></div>
+    <div class="work-area"><section class="writing-pane" aria-label="写作区"><div class="document-heading"><div class="eyebrow">你的文字，值得被认真对待</div><div class="title-row"><input id="doc-title" aria-label="文档标题" maxlength="100"/><button id="delete-note" class="icon-button" title="删除文档" aria-label="删除当前文档">${icon('trash-2')}</button></div><div class="document-meta">${icon('file-text')}<span>Markdown 文档</span><span class="meta-dot">·</span><span id="updated-at"></span></div></div><div class="editor-bar"><div class="editor-toolbar-mount"></div><span class="editor-bar-label">${icon('pen-line')} 开始书写</span><div class="writing-options"><button id="insert-image" class="text-button" title="图片保存在当前文档同名 .assets 目录">插入图片</button><label class="font-picker"><span>字体</span><select id="font-select" aria-label="文档字体" title="使用设备已安装的字体">${fontOptions.map(font => `<option value="${font.id}" ${font.id === documentFont.id ? 'selected' : ''}>${font.label}</option>`).join('')}</select>${icon('chevron-down')}</label><button id="source-toggle" class="mode-toggle" aria-pressed="false">${icon('code-xml')}<span>源码模式</span></button></div></div><div id="editor"><div id="document-load-state" class="document-load-state" hidden><p id="document-load-message" role="status"></p><button id="retry-note" hidden>重试读取</button></div></div></section><aside class="outline" aria-label="文档大纲"><div class="outline-heading">${icon('list-tree')} 文档大纲</div><nav id="outline-list"></nav><div class="outline-tip">${icon('sparkles')}<p>让文字回归文字。<br/>让思绪自由流淌。</p><span>WRITE SOMETHING GOOD.</span></div></aside></div>
     <footer class="statusbar"><div><span class="status-dot"></span><span id="footer-state">所有更改已保存至服务器</span></div><div><span id="word-count"></span><span class="status-divider">|</span><span id="read-time"></span><span class="status-divider">|</span><span>UTF-8</span><span class="status-divider">|</span><button id="shortcuts">${icon('keyboard')} 快捷键</button></div></footer>
   </main><input id="image-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden/><input id="file-input" type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" multiple hidden/><input id="directory-input" type="file" webkitdirectory multiple hidden/><input id="backup-input" type="file" accept=".json,application/json" hidden/><div id="toast" role="status" hidden></div><dialog id="dialog"><form method="dialog"><div id="dialog-content"></div><div class="dialog-actions"><button value="cancel">取消</button><button value="confirm" class="primary">确定</button></div></form></dialog>`;
 
+const toolbarSettings = $('.writing-options');
+const toolbarMount = $('.editor-toolbar-mount');
 const imageUploads = new Set<Promise<void>>();
-const editors = new Map<string, { instance: Editor; host: HTMLDivElement }>();
+const editors = new Map<string, { instance: Editor; host: HTMLDivElement; toolbar: ReturnType<typeof createEditorToolbar> }>();
 function makeEditor(content: string) {
   const noteId = workspace.activeId;
   const host = document.createElement('div'); host.className = 'editor-instance'; $('#editor').append(host);
   const instance = new Editor({ el: host, height: '100%', initialEditType: sourceMode ? 'markdown' : 'wysiwyg', previewStyle: 'vertical', initialValue: content, language: 'zh-CN', usageStatistics: false, hideModeSwitch: true, theme, autofocus: false, plugins: [markdownShortcuts, documentImages(session.user.id, noteId, workspace)], placeholder: '直接输入 Markdown：## 完整标题后回车渲染标题，```javascript 后回车创建代码块…', toolbarItems: [['heading', 'bold', 'italic', 'strike'], ['hr', 'quote'], ['ul', 'ol', 'task'], ['table', 'link', 'image'], ['code', 'codeblock']], hooks: { addImageBlobHook: (blob, callback) => { uploadImage(noteId, blob, callback); } } });
-  editors.set(workspace.activeId, { instance, host });
+  editors.set(workspace.activeId, { instance, host, toolbar: createEditorToolbar(host) });
   return instance;
 }
 let editor = makeEditor(active().content);
+function activateToolbar() {
+  const toolbar = editors.get(workspace.activeId)!.toolbar;
+  toolbar.row.append(toolbarSettings); toolbarMount.replaceChildren(toolbar.viewport);
+  toolbarMount.classList.toggle('toastui-editor-dark', theme === 'dark');
+  toolbar.refresh();
+}
+activateToolbar();
 let loading = false;
 let selectionVersion = 0;
 let saveTimer: ReturnType<typeof setTimeout>;
@@ -197,6 +207,7 @@ async function selectNote(id: string, expandFolders = true) {
     entry.host.hidden = noteId !== id;
     entry.host.classList.toggle('active-editor', noteId === id);
   }
+  activateToolbar();
   setDocumentLoading(null);
   window.dispatchEvent(new Event('resize'));
   editor.changeMode(sourceMode ? 'markdown' : 'wysiwyg', true); editor.moveCursorToStart(false); loading = false;
@@ -368,7 +379,7 @@ $('#doc-title').oninput = () => { active().title = $<HTMLInputElement>('#doc-tit
 $('#source-toggle').onclick = () => { sourceMode = !sourceMode; editor.changeMode(sourceMode ? 'markdown' : 'wysiwyg', true); $('#source-toggle').setAttribute('aria-pressed', String(sourceMode)); $('#source-toggle span').textContent = sourceMode ? '即时编辑' : '源码模式'; };
 $('#sidebar-toggle').onclick = () => document.body.classList.toggle(window.innerWidth <= 700 ? 'sidebar-open' : 'sidebar-hidden');
 $('#focus').onclick = () => { focusMode = !focusMode; document.body.classList.toggle('focus-mode', focusMode); $('#focus span').textContent = focusMode ? '退出专注' : '专注'; $('#focus').setAttribute('aria-pressed', String(focusMode)); };
-$('#theme').onclick = () => { theme = theme === 'light' ? 'dark' : 'light'; document.documentElement.dataset.theme = theme; document.querySelectorAll('.toastui-editor-defaultUI').forEach(el => el.classList.toggle('toastui-editor-dark', theme === 'dark')); $('#theme').innerHTML = icon(theme === 'dark' ? 'sun' : 'moon'); $('#theme').setAttribute('aria-label', theme === 'dark' ? '切换浅色主题' : '切换深色主题'); refreshIcons(); workspace.settings = { ...workspace.settings, theme }; persist(); };
+$('#theme').onclick = () => { theme = theme === 'light' ? 'dark' : 'light'; document.documentElement.dataset.theme = theme; document.querySelectorAll('.toastui-editor-defaultUI, .editor-toolbar-mount').forEach(el => el.classList.toggle('toastui-editor-dark', theme === 'dark')); $('#theme').innerHTML = icon(theme === 'dark' ? 'sun' : 'moon'); $('#theme').setAttribute('aria-label', theme === 'dark' ? '切换浅色主题' : '切换深色主题'); refreshIcons(); workspace.settings = { ...workspace.settings, theme }; persist(); };
 $('#export').onclick = () => { $('#export-menu').hidden = !$('#export-menu').hidden; $('#export').setAttribute('aria-expanded', String(!$('#export-menu').hidden)); };
 $('#export-menu').onclick = event => { const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-export]'); if (button) { $('#export-menu').hidden = true; $('#export').setAttribute('aria-expanded', 'false'); exportNote(button.dataset.export!); } };
 document.addEventListener('click', event => { if (!(event.target as HTMLElement).closest('.export-wrap')) { $('#export-menu').hidden = true; $('#export').setAttribute('aria-expanded', 'false'); } });
