@@ -3,7 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	bolt "go.etcd.io/bbolt"
+
 	"io"
 	"net/http"
 	"net/url"
@@ -74,7 +74,7 @@ func (a *App) gitRequest(w http.ResponseWriter, r *http.Request, u User) {
 	// The repository name is part of encrypted contents; the DB key is a keyed digest.
 	key := u.ID + ":" + a.credentialKey(repository)
 	token := in.Token
-	e := a.store.db.Update(func(tx *bolt.Tx) error {
+	e := a.store.db.Update(func(tx *recordTx) error {
 		var current User
 		if e := a.store.get(tx, "users", u.ID, &current); e != nil {
 			return e
@@ -146,7 +146,7 @@ func (a *App) deleteCredential(w http.ResponseWriter, r *http.Request, u User) {
 		return
 	}
 	key := u.ID + ":" + a.credentialKey(strings.ToLower(in.Repository))
-	e := a.store.db.Update(func(tx *bolt.Tx) error { return tx.Bucket([]byte("credentials")).Delete([]byte(key)) })
+	e := a.store.db.Update(func(tx *recordTx) error { return tx.Delete("credentials", key) })
 	if e != nil {
 		fail(w, 500, "删除失败")
 		return

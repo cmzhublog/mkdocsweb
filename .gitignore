@@ -10,3 +10,7 @@ certs/
 backend/mkdocsweb
 *.db
 *.db.lock
+
+.secrets/
+
+backups/

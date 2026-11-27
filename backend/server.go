@@ -4,7 +4,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
-	bolt "go.etcd.io/bbolt"
+
 	"io"
 	"net"
 	"net/http"
@@ -26,6 +26,7 @@ type Config struct {
 	Origin       string
 	StaticDir    string
 	TrustedProxy netip.Prefix
+	AllowHTTP    bool
 }
 type attempt struct {
 	count int
@@ -87,17 +88,26 @@ func (a *App) secure(r *http.Request) bool {
 	ip, e := netip.ParseAddr(host)
 	return e == nil && a.cfg.TrustedProxy.IsValid() && a.cfg.TrustedProxy.Contains(ip.Unmap()) && r.Header.Get("X-Forwarded-Proto") == "https"
 }
+func (a *App) sessionCookieName() string {
+	if a.cfg.AllowHTTP && strings.HasPrefix(a.cfg.Origin, "http://") {
+		return "mkdocs-session"
+	}
+	return cookieName
+}
+func (a *App) secureCookie() bool { return a.sessionCookieName() == cookieName }
 func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
-	if !a.secure(r) {
+	if !a.secure(r) && !(a.cfg.AllowHTTP && strings.HasPrefix(a.cfg.Origin, "http://")) {
 		fail(w, 426, "请通过 HTTPS 访问服务")
 		return
 	}
-	w.Header().Set("Strict-Transport-Security", "max-age=31536000")
+	if a.secureCookie() {
+		w.Header().Set("Strict-Transport-Security", "max-age=31536000")
+	}
 	origin, _ := url.Parse(a.cfg.Origin)
 	if r.Host != origin.Host {
 		fail(w, 403, "访问地址不匹配 APP_ORIGIN")
@@ -137,11 +147,11 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.URL.Path == "/api/auth/session" && r.Method == "GET":
 		reply(w, 200, map[string]any{"user": publicUser(u), "csrf": session.CSRF})
 	case r.URL.Path == "/api/auth/logout" && r.Method == "POST":
-		if e := a.store.db.Update(func(tx *bolt.Tx) error { return tx.Bucket([]byte("sessions")).Delete([]byte(key)) }); e != nil {
+		if e := a.store.db.Update(func(tx *recordTx) error { return tx.Delete("sessions", key) }); e != nil {
 			fail(w, 500, "退出失败")
 			return
 		}
-		http.SetCookie(w, &http.Cookie{Name: cookieName, Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: -1})
+		http.SetCookie(w, &http.Cookie{Name: a.sessionCookieName(), Path: "/", Secure: a.secureCookie(), HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: -1})
 		reply(w, 200, map[string]bool{"ok": true})
 	case r.URL.Path == "/api/auth/password" && r.Method == "POST":
 		a.changePassword(w, r, u)
@@ -181,18 +191,18 @@ func (a *App) static(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, filepath.Join(a.cfg.StaticDir, filepath.FromSlash(path)))
 }
 func (a *App) authenticate(r *http.Request) (u User, s Session, key string, err error) {
-	c, e := r.Cookie(cookieName)
+	c, e := r.Cookie(a.sessionCookieName())
 	if e != nil || len(c.Value) != 64 {
 		return u, s, "", os.ErrNotExist
 	}
 	key = sessionKey(c.Value)
-	err = a.store.db.Update(func(tx *bolt.Tx) error {
+	err = a.store.db.Update(func(tx *recordTx) error {
 		if e := a.store.get(tx, "sessions", key, &s); e != nil {
 			return e
 		}
 		now := time.Now().Unix()
 		if now > s.Expires || now-s.LastSeen > 1800 {
-			tx.Bucket([]byte("sessions")).Delete([]byte(key))
+			tx.Delete("sessions", key)
 			return os.ErrNotExist
 		}
 		if e := a.store.get(tx, "users", s.UserID, &u); e != nil {
@@ -252,7 +262,7 @@ func (a *App) login(w http.ResponseWriter, r *http.Request) {
 	}
 	u := a.dummy
 	found := false
-	e := a.store.db.View(func(tx *bolt.Tx) error {
+	e := a.store.db.View(func(tx *recordTx) error {
 		users, e := a.store.users(tx)
 		if e != nil {
 			return e
@@ -276,7 +286,7 @@ func (a *App) login(w http.ResponseWriter, r *http.Request) {
 	}
 	raw := randomID()
 	s := Session{UserID: u.ID, CSRF: randomID(), Expires: time.Now().Add(8 * time.Hour).Unix(), LastSeen: time.Now().Unix()}
-	e = a.store.db.Update(func(tx *bolt.Tx) error {
+	e = a.store.db.Update(func(tx *recordTx) error {
 		var current User
 		if e := a.store.get(tx, "users", u.ID, &current); e != nil {
 			return e
@@ -284,13 +294,13 @@ func (a *App) login(w http.ResponseWriter, r *http.Request) {
 		if current.Disabled || current.Hash != u.Hash {
 			return errors.New("account changed")
 		}
-		b := tx.Bucket([]byte("sessions"))
+
 		now := time.Now().Unix()
 		if e := a.store.deleteSessions(tx, func(old Session) bool { return now > old.Expires || now-old.LastSeen > 1800 }); e != nil {
 			return e
 		}
-		if old, e := r.Cookie(cookieName); e == nil {
-			if e := b.Delete([]byte(sessionKey(old.Value))); e != nil {
+		if old, e := r.Cookie(a.sessionCookieName()); e == nil {
+			if e := tx.Delete("sessions", sessionKey(old.Value)); e != nil {
 				return e
 			}
 		}
@@ -300,7 +310,7 @@ func (a *App) login(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "无法创建会话")
 		return
 	}
-	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: raw, Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: 8 * 3600})
+	http.SetCookie(w, &http.Cookie{Name: a.sessionCookieName(), Value: raw, Path: "/", Secure: a.secureCookie(), HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: 8 * 3600})
 	reply(w, 200, map[string]any{"user": publicUser(u), "csrf": s.CSRF})
 }
 func (a *App) changePassword(w http.ResponseWriter, r *http.Request, u User) {
@@ -320,7 +330,7 @@ func (a *App) changePassword(w http.ResponseWriter, r *http.Request, u User) {
 		fail(w, 400, e.Error())
 		return
 	}
-	e := a.store.db.Update(func(tx *bolt.Tx) error {
+	e := a.store.db.Update(func(tx *recordTx) error {
 		var current User
 		if e := a.store.get(tx, "users", u.ID, &current); e != nil {
 			return e
@@ -344,7 +354,7 @@ func (a *App) changePassword(w http.ResponseWriter, r *http.Request, u User) {
 func (a *App) workspace(w http.ResponseWriter, r *http.Request, u User) {
 	if r.Method == "GET" {
 		d := Document{Workspace: json.RawMessage("null")}
-		e := a.store.db.View(func(tx *bolt.Tx) error { return a.store.get(tx, "workspaces", u.ID, &d) })
+		e := a.store.db.View(func(tx *recordTx) error { return a.store.get(tx, "workspaces", u.ID, &d) })
 		if e != nil && !errors.Is(e, os.ErrNotExist) {
 			fail(w, 500, "文档解密失败")
 			return
@@ -364,7 +374,7 @@ func (a *App) workspace(w http.ResponseWriter, r *http.Request, u User) {
 		fail(w, 400, "文档格式无效，未覆盖已保存内容")
 		return
 	}
-	e := a.store.db.Update(func(tx *bolt.Tx) error {
+	e := a.store.db.Update(func(tx *recordTx) error {
 		var old Document
 		if e := a.store.get(tx, "workspaces", u.ID, &old); e != nil && !errors.Is(e, os.ErrNotExist) {
 			return e
@@ -390,7 +400,7 @@ func (a *App) admin(w http.ResponseWriter, r *http.Request, actor User) {
 		switch r.Method {
 		case "GET":
 			var users []User
-			e := a.store.db.View(func(tx *bolt.Tx) error { var e error; users, e = a.store.users(tx); return e })
+			e := a.store.db.View(func(tx *recordTx) error { var e error; users, e = a.store.users(tx); return e })
 			if e != nil {
 				fail(w, 500, "读取失败")
 				return
@@ -443,7 +453,7 @@ func (a *App) admin(w http.ResponseWriter, r *http.Request, actor User) {
 			return
 		}
 	}
-	e := a.store.db.Update(func(tx *bolt.Tx) error {
+	e := a.store.db.Update(func(tx *recordTx) error {
 		var currentActor User
 		if e := a.store.get(tx, "users", actor.ID, &currentActor); e != nil {
 			return e

@@ -1,0 +1,117 @@
+name: mkdocsweb
+
+x-app: &app
+  build:
+    context: .
+  image: mkdocsweb:local
+  environment: &app-env
+    APP_ORIGIN: ${APP_ORIGIN:-http://localhost:8080}
+    ALLOW_HTTP: ${ALLOW_HTTP:-true}
+    LISTEN_ADDR: 0.0.0.0:8080
+    TRUSTED_PROXY_CIDR: ${TRUSTED_PROXY_CIDR:-}
+    MASTER_KEY_FILE: /run/secrets/master_key
+    PGHOST: db
+    PGPORT: "5432"
+    PGDATABASE: mkdocsweb
+    PGUSER: mkdocsweb
+    PGPASSWORD_FILE: /run/secrets/postgres_password
+    PGSSLMODE: disable
+  secrets:
+    - master_key
+    - postgres_password
+  networks:
+    - backend
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_admin_password
+    secrets:
+      - postgres_password
+      - postgres_admin_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./deploy/postgres:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -h 127.0.0.1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    networks:
+      - backend
+
+  init:
+    <<: *app
+    restart: "no"
+    command: [bootstrap-admin]
+    environment:
+      <<: *app-env
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD_FILE: /run/secrets/admin_password
+    secrets:
+      - master_key
+      - postgres_password
+      - admin_password
+    depends_on:
+      db:
+        condition: service_healthy
+
+  app:
+    <<: *app
+    restart: unless-stopped
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:${APP_PORT:-8080}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [CMD, /app/mkdocsweb, healthcheck]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    stop_grace_period: 15s
+
+  test:
+    <<: *app
+    profiles: [test]
+    image: mkdocsweb-test:local
+    build:
+      context: .
+      target: test
+    environment:
+      <<: *app-env
+      TEST_POSTGRES: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+
+networks:
+  backend:
+
+secrets:
+  master_key:
+    file: ./.secrets/master_key
+  postgres_password:
+    file: ./.secrets/postgres_password
+  admin_password:
+    file: ./.secrets/admin_password
+  postgres_admin_password:
+    file: ./.secrets/postgres_admin_password

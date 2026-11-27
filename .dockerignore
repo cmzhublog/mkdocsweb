@@ -7,3 +7,7 @@ data
 certs
 *.db
 backend/mkdocsweb
+
+.secrets
+
+backups

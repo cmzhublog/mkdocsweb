@@ -39,7 +39,7 @@ type Document struct {
 	Workspace json.RawMessage `json:"workspace"`
 }
 type Store struct {
-	db       *bolt.DB
+	db       recordDB
 	aead     cipher.AEAD
 	indexKey []byte
 }
@@ -60,49 +60,48 @@ func openStore(path string, key []byte) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return nil, err
 	}
+	db, e := bolt.Open(path, 0600, &bolt.Options{Timeout: time.Second})
+	if e != nil {
+		return nil, e
+	}
+	return initializeStore(&localDB{db}, key)
+}
+func initializeStore(db recordDB, key []byte) (*Store, error) {
+	if len(key) != 32 {
+		db.Close()
+		return nil, errors.New("MASTER_KEY must decode to 32 bytes")
+	}
 	block, e := aes.NewCipher(key)
 	if e != nil {
+		db.Close()
 		return nil, e
 	}
 	aead, e := cipher.NewGCM(block)
 	if e != nil {
-		return nil, e
-	}
-	db, e := bolt.Open(path, 0600, &bolt.Options{Timeout: time.Second})
-	if e != nil {
+		db.Close()
 		return nil, e
 	}
 	mac := hmac.New(sha256.New, key)
 	mac.Write([]byte("mkdocsweb-credential-index-v1"))
 	s := &Store{db: db, aead: aead, indexKey: mac.Sum(nil)}
-	e = db.Update(func(tx *bolt.Tx) error {
-		for _, b := range []string{"users", "sessions", "workspaces", "credentials", "meta"} {
-			if _, e := tx.CreateBucketIfNotExists([]byte(b)); e != nil {
-				return e
-			}
+	e = db.Update(func(tx *recordTx) error {
+		var check string
+		e := s.get(tx, "meta", "keycheck", &check)
+		if errors.Is(e, os.ErrNotExist) {
+			return s.put(tx, "meta", "keycheck", "mkdocsweb-v1")
+		}
+		if e != nil || check != "mkdocsweb-v1" {
+			return errors.New("MASTER_KEY does not match database")
 		}
 		return nil
 	})
-	if e == nil {
-		e = db.Update(func(tx *bolt.Tx) error {
-			b := tx.Bucket([]byte("meta"))
-			if b.Get([]byte("keycheck")) == nil {
-				return s.put(tx, "meta", "keycheck", "mkdocsweb-v1")
-			}
-			var check string
-			if e := s.get(tx, "meta", "keycheck", &check); e != nil {
-				return errors.New("MASTER_KEY does not match database")
-			}
-			return nil
-		})
-	}
 	if e != nil {
 		db.Close()
 		return nil, e
 	}
 	return s, nil
 }
-func (s *Store) put(tx *bolt.Tx, bucket, key string, value any) error {
+func (s *Store) put(tx *recordTx, bucket, key string, value any) error {
 	raw, e := json.Marshal(value)
 	if e != nil {
 		return e
@@ -112,12 +111,12 @@ func (s *Store) put(tx *bolt.Tx, bucket, key string, value any) error {
 		return e
 	}
 	sealed := s.aead.Seal(n, n, raw, []byte(bucket+":"+key+":v1"))
-	return tx.Bucket([]byte(bucket)).Put([]byte(key), sealed)
+	return tx.Put(bucket, key, sealed)
 }
-func (s *Store) get(tx *bolt.Tx, bucket, key string, value any) error {
-	b := tx.Bucket([]byte(bucket)).Get([]byte(key))
-	if b == nil {
-		return os.ErrNotExist
+func (s *Store) get(tx *recordTx, bucket, key string, value any) error {
+	b, e := tx.Get(bucket, key)
+	if e != nil {
+		return e
 	}
 	n := s.aead.NonceSize()
 	if len(b) < n {
@@ -159,9 +158,9 @@ func verifyPassword(u User, password string) bool {
 }
 func publicUser(u User) User       { u.Hash = ""; u.Salt = ""; return u }
 func sessionKey(raw string) string { h := sha256.Sum256([]byte(raw)); return hex.EncodeToString(h[:]) }
-func (s *Store) users(tx *bolt.Tx) ([]User, error) {
+func (s *Store) users(tx *recordTx) ([]User, error) {
 	list := []User{}
-	e := tx.Bucket([]byte("users")).ForEach(func(k, v []byte) error {
+	e := tx.ForEach("users", func(k, v []byte) error {
 		var u User
 		if e := s.get(tx, "users", string(k), &u); e != nil {
 			return e
@@ -171,9 +170,9 @@ func (s *Store) users(tx *bolt.Tx) ([]User, error) {
 	})
 	return list, e
 }
-func (s *Store) deleteSessions(tx *bolt.Tx, matches func(Session) bool) error {
+func (s *Store) deleteSessions(tx *recordTx, matches func(Session) bool) error {
 	keys := []string{}
-	e := tx.Bucket([]byte("sessions")).ForEach(func(k, _ []byte) error {
+	e := tx.ForEach("sessions", func(k, _ []byte) error {
 		var session Session
 		if e := s.get(tx, "sessions", string(k), &session); e != nil {
 			return e
@@ -187,13 +186,13 @@ func (s *Store) deleteSessions(tx *bolt.Tx, matches func(Session) bool) error {
 		return e
 	}
 	for _, key := range keys {
-		if e := tx.Bucket([]byte("sessions")).Delete([]byte(key)); e != nil {
+		if e := tx.Delete("sessions", key); e != nil {
 			return e
 		}
 	}
 	return nil
 }
-func (s *Store) revoke(tx *bolt.Tx, id string) error {
+func (s *Store) revoke(tx *recordTx, id string) error {
 	return s.deleteSessions(tx, func(session Session) bool { return session.UserID == id })
 }
 func (s *Store) createUser(username, password, role string) (User, error) {
@@ -204,7 +203,7 @@ func (s *Store) createUser(username, password, role string) (User, error) {
 	if e := setPassword(&u, password); e != nil {
 		return u, e
 	}
-	e := s.db.Update(func(tx *bolt.Tx) error {
+	e := s.db.Update(func(tx *recordTx) error {
 		users, e := s.users(tx)
 		if e != nil {
 			return e
@@ -223,4 +222,67 @@ func (a *App) credentialKey(repository string) string {
 	m := hmac.New(sha256.New, a.store.indexKey)
 	m.Write([]byte(repository))
 	return hex.EncodeToString(m.Sum(nil))
+}
+
+// Bootstrap is transactional and never changes an existing account or password.
+func (s *Store) bootstrapAdmin(username, password string) error {
+	var empty bool
+	if e := s.db.View(func(tx *recordTx) error { users, e := s.users(tx); empty = len(users) == 0; return e }); e != nil {
+		return e
+	}
+	if !empty {
+		return nil
+	}
+	u := User{ID: randomID(), Username: strings.ToLower(strings.TrimSpace(username)), Role: "admin"}
+	if !usernamePattern.MatchString(u.Username) {
+		return errors.New("invalid ADMIN_USERNAME")
+	}
+	if e := setPassword(&u, password); e != nil {
+		return e
+	}
+	return s.db.Update(func(tx *recordTx) error {
+		users, e := s.users(tx)
+		if e != nil {
+			return e
+		}
+		if len(users) > 0 {
+			return nil
+		}
+		return s.put(tx, "users", u.ID, u)
+	})
+}
+func (s *Store) migrateBbolt(path string, key []byte) error {
+	if info, e := os.Stat(path); e != nil || info.Size() == 0 {
+		return errors.New("legacy database must be an existing non-empty file")
+	}
+	old, e := openStore(path, key)
+	if e != nil {
+		return e
+	}
+	defer old.db.Close()
+	return s.db.Update(func(dest *recordTx) error {
+		for _, bucket := range []string{"users", "sessions", "workspaces", "credentials"} {
+			count := 0
+			if e := dest.ForEach(bucket, func(_, _ []byte) error { count++; return nil }); e != nil {
+				return e
+			}
+			if count > 0 {
+				return errors.New("migration requires an empty destination database")
+			}
+		}
+		return old.db.View(func(src *recordTx) error {
+			for _, bucket := range []string{"users", "sessions", "workspaces", "credentials"} {
+				if e := src.ForEach(bucket, func(k, v []byte) error {
+					var value any
+					if e := old.get(src, bucket, string(k), &value); e != nil {
+						return e
+					}
+					return s.put(dest, bucket, string(k), value)
+				}); e != nil {
+					return e
+				}
+			}
+			return nil
+		})
+	})
 }

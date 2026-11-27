@@ -8,12 +8,12 @@ import (
 	"fmt"
 	"golang.org/x/term"
 	"log"
+	"net"
 	"net/http"
-	"net/netip"
-	"net/url"
+
 	"os"
 	"os/signal"
-	"strings"
+
 	"syscall"
 	"time"
 )
@@ -25,6 +25,19 @@ func env(key, fallback string) string {
 	return fallback
 }
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		_, port, e := net.SplitHostPort(env("LISTEN_ADDR", "0.0.0.0:8080"))
+		if e != nil {
+			os.Exit(1)
+		}
+		conn, e := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", port), 3*time.Second)
+		if e != nil {
+			os.Exit(1)
+		}
+		conn.Close()
+		return
+	}
+
 	if len(os.Args) > 1 && os.Args[1] == "keygen" {
 		b := make([]byte, 32)
 		if _, e := rand.Read(b); e != nil {
@@ -33,15 +46,44 @@ func main() {
 		fmt.Println(base64.StdEncoding.EncodeToString(b))
 		return
 	}
-	key, e := base64.StdEncoding.DecodeString(os.Getenv("MASTER_KEY"))
+	key, e := base64.StdEncoding.DecodeString(secretEnv("MASTER_KEY"))
 	if e != nil || len(key) != 32 {
 		log.Fatal("Set MASTER_KEY to a base64-encoded random 32-byte key (run: mkdocsweb keygen)")
 	}
-	s, e := openStore(env("DATA_FILE", "data/mkdocsweb.db"), key)
+	var s *Store
+	if dsn := databaseURL(); dsn != "" {
+		var db recordDB
+		db, e = openPostgres(dsn)
+		if e == nil {
+			s, e = initializeStore(db, key)
+		}
+	} else {
+		s, e = openStore(env("DATA_FILE", "data/mkdocsweb.db"), key)
+	}
 	if e != nil {
 		log.Fatal(e)
 	}
 	defer s.db.Close()
+	if len(os.Args) > 1 && os.Args[1] == "bootstrap-admin" {
+		username := env("ADMIN_USERNAME", "admin")
+		password := secretEnv("ADMIN_PASSWORD")
+		if e := s.bootstrapAdmin(username, password); e != nil {
+			log.Fatal(e)
+		}
+		fmt.Println("Administrator bootstrap complete (existing users left unchanged)")
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "migrate-bbolt" {
+		path := os.Getenv("LEGACY_DATA_FILE")
+		if path == "" || databaseURL() == "" {
+			log.Fatal("Set LEGACY_DATA_FILE and PostgreSQL connection settings")
+		}
+		if e := s.migrateBbolt(path, key); e != nil {
+			log.Fatal(e)
+		}
+		fmt.Println("Encrypted bbolt records migrated to PostgreSQL")
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] == "create-admin" {
 		if len(os.Args) != 3 {
 			log.Fatal("Usage: mkdocsweb create-admin username (password read privately from terminal)")
@@ -58,31 +100,18 @@ func main() {
 		fmt.Println("Administrator created")
 		return
 	}
-	origin := os.Getenv("APP_ORIGIN")
-	u, e := url.Parse(origin)
-	if e != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" {
-		log.Fatal("APP_ORIGIN must be an HTTPS origin without trailing slash, e.g. https://notes.example.com")
-	}
-	cfg := Config{Origin: origin, StaticDir: env("STATIC_DIR", "dist")}
-	if proxy := os.Getenv("TRUSTED_PROXY_CIDR"); proxy != "" {
-		cfg.TrustedProxy, e = netip.ParsePrefix(proxy)
-		if e != nil || cfg.TrustedProxy.Bits() == 0 {
-			log.Fatal("Invalid trusted proxy CIDR")
-		}
+	cfg, e := transportConfig(os.Getenv("APP_ORIGIN"), os.Getenv("ALLOW_HTTP"), os.Getenv("TRUSTED_PROXY_CIDR"))
+	if e != nil {
+		log.Fatal(e)
 	}
 	cert, keyFile := os.Getenv("TLS_CERT_FILE"), os.Getenv("TLS_KEY_FILE")
 	if (cert == "") != (keyFile == "") {
 		log.Fatal("Both TLS_CERT_FILE and TLS_KEY_FILE are required")
 	}
-	addr := env("LISTEN_ADDR", "127.0.0.1:8080")
-	if cert == "" {
-		if !cfg.TrustedProxy.IsValid() {
-			log.Fatal("TLS certificates or explicit TRUSTED_PROXY_CIDR required")
-		}
-		if !strings.HasPrefix(addr, "127.0.0.1:") && !strings.HasPrefix(addr, "[::1]:") {
-			log.Fatal("Proxy mode must bind to loopback; run HTTPS proxy on same host/network namespace")
-		}
+	if !cfg.AllowHTTP && cert == "" && !cfg.TrustedProxy.IsValid() {
+		log.Fatal("HTTPS requires TLS certificates or TRUSTED_PROXY_CIDR")
 	}
+	addr := env("LISTEN_ADDR", "127.0.0.1:8080")
 	server := &http.Server{Addr: addr, Handler: newApp(s, cfg), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 90 * time.Second, WriteTimeout: 90 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12}}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

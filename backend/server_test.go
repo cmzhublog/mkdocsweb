@@ -3,8 +3,10 @@ package main
 import (
 	"bytes"
 	"crypto/tls"
+	"database/sql"
 	"encoding/json"
-	bolt "go.etcd.io/bbolt"
+	"net/url"
+
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -27,7 +29,31 @@ type testSession struct {
 func setup(t *testing.T) (*App, string) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "app.db")
-	s, e := openStore(path, bytes.Repeat([]byte{7}, 32))
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if os.Getenv("TEST_POSTGRES") == "true" {
+		dsn = databaseURL()
+	}
+	if dsn != "" {
+		admin, e := sql.Open("pgx", dsn)
+		if e != nil {
+			t.Fatal(e)
+		}
+		schema := "mkdocs_test_" + randomID()[:16]
+		if _, e = admin.Exec("CREATE SCHEMA " + schema); e != nil {
+			admin.Close()
+			t.Fatal(e)
+		}
+		t.Cleanup(func() { admin.Exec("DROP SCHEMA " + schema + " CASCADE"); admin.Close() })
+		u, e := url.Parse(dsn)
+		if e != nil {
+			t.Fatal(e)
+		}
+		q := u.Query()
+		q.Set("search_path", schema)
+		u.RawQuery = q.Encode()
+		path = u.String()
+	}
+	s, e := openTestStore(path, bytes.Repeat([]byte{7}, 32))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -145,7 +171,7 @@ func TestSecurityAndIsolation(t *testing.T) {
 		if len(tokens) != 3 || tokens[0] != "Bearer ghp-private-token-marker" || tokens[1] != tokens[0] || tokens[2] != "" {
 			t.Fatal("credential isolation failed")
 		}
-		raw, e := os.ReadFile(path)
+		raw, e := encryptedTestDump(a.store, path)
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -192,7 +218,7 @@ func TestTransportAndExpiry(t *testing.T) {
 		a.ServeHTTP(w, r)
 		expectStatus(t, w, tc.want)
 	}
-	if e := a.store.db.Update(func(tx *bolt.Tx) error {
+	if e := a.store.db.Update(func(tx *recordTx) error {
 		var v Session
 		if e := a.store.get(tx, "sessions", sessionKey(s.cookie.Value), &v); e != nil {
 			return e
@@ -219,17 +245,19 @@ func TestEncryptionTamperAndWrongKey(t *testing.T) {
 	a, path := setup(t)
 	s := loginTest(t, a, "alice", "user")
 	expectStatus(t, request(t, a, &s, "PUT", "/api/workspace", workspaceBody(0, "secret")), 200)
-	if e := a.store.db.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte("workspaces"))
-		raw := append([]byte(nil), b.Get([]byte(s.user.ID))...)
+	if e := a.store.db.Update(func(tx *recordTx) error {
+		raw, e := tx.Get("workspaces", s.user.ID)
+		if e != nil {
+			return e
+		}
 		raw[len(raw)-1] ^= 1
-		return b.Put([]byte(s.user.ID), raw)
+		return tx.Put("workspaces", s.user.ID, raw)
 	}); e != nil {
 		t.Fatal(e)
 	}
 	expectStatus(t, request(t, a, &s, "GET", "/api/workspace", nil), 500)
 	a.store.db.Close()
-	if other, e := openStore(path, bytes.Repeat([]byte{8}, 32)); e == nil {
+	if other, e := openTestStore(path, bytes.Repeat([]byte{8}, 32)); e == nil {
 		other.db.Close()
 		t.Fatal("wrong key accepted")
 	}
@@ -265,7 +293,7 @@ func TestRevokesAllSessionsWithoutSkippingAdjacentRecords(t *testing.T) {
 	a, _ := setup(t)
 	alice := loginTest(t, a, "alice", "user")
 	bob := loginTest(t, a, "bob", "user")
-	if e := a.store.db.Update(func(tx *bolt.Tx) error {
+	if e := a.store.db.Update(func(tx *recordTx) error {
 		for _, key := range []string{"a", "b", "c", "d", "e"} {
 			if e := a.store.put(tx, "sessions", key, Session{UserID: alice.user.ID, Expires: time.Now().Add(time.Hour).Unix(), LastSeen: time.Now().Unix()}); e != nil {
 				return e
@@ -275,8 +303,8 @@ func TestRevokesAllSessionsWithoutSkippingAdjacentRecords(t *testing.T) {
 	}); e != nil {
 		t.Fatal(e)
 	}
-	if e := a.store.db.View(func(tx *bolt.Tx) error {
-		return tx.Bucket([]byte("sessions")).ForEach(func(k, _ []byte) error {
+	if e := a.store.db.View(func(tx *recordTx) error {
+		return tx.ForEach("sessions", func(k, _ []byte) error {
 			var s Session
 			if e := a.store.get(tx, "sessions", string(k), &s); e != nil {
 				return e
@@ -291,4 +319,142 @@ func TestRevokesAllSessionsWithoutSkippingAdjacentRecords(t *testing.T) {
 	}
 	expectStatus(t, request(t, a, &alice, "GET", "/api/auth/session", nil), 401)
 	expectStatus(t, request(t, a, &bob, "GET", "/api/auth/session", nil), 200)
+}
+
+func openTestStore(path string, key []byte) (*Store, error) {
+	if strings.HasPrefix(path, "postgres") {
+		db, e := openPostgres(path)
+		if e != nil {
+			return nil, e
+		}
+		return initializeStore(db, key)
+	}
+	return openStore(path, key)
+}
+func encryptedTestDump(s *Store, path string) ([]byte, error) {
+	if !strings.HasPrefix(path, "postgres") {
+		return os.ReadFile(path)
+	}
+	var raw []byte
+	e := s.db.View(func(tx *recordTx) error {
+		for _, b := range []string{"users", "sessions", "workspaces", "credentials", "meta"} {
+			if e := tx.ForEach(b, func(k, v []byte) error { raw = append(raw, k...); raw = append(raw, v...); return nil }); e != nil {
+				return e
+			}
+		}
+		return nil
+	})
+	return raw, e
+}
+func TestHTTPModeRequiresExplicitConfiguration(t *testing.T) {
+	if _, e := transportConfig("http://localhost:8080", "false", ""); e == nil {
+		t.Fatal("implicit HTTP accepted")
+	}
+	if _, e := transportConfig("https://app.test", "true", ""); e == nil {
+		t.Fatal("HTTP downgrade of HTTPS origin accepted")
+	}
+	a, _ := setup(t)
+	cfg, e := transportConfig("http://localhost:8080", "true", "")
+	if e != nil {
+		t.Fatal(e)
+	}
+	a.cfg = cfg
+	if _, e := a.store.createUser("alice", testPassword, "user"); e != nil {
+		t.Fatal(e)
+	}
+	body := strings.NewReader(`{"username":"alice","password":"` + testPassword + `"}`)
+	r := httptest.NewRequest("POST", "http://localhost:8080/api/auth/login", body)
+	r.Header.Set("Origin", a.cfg.Origin)
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	a.ServeHTTP(w, r)
+	expectStatus(t, w, 200)
+	c := w.Result().Cookies()[0]
+	if c.Secure || c.Name != "mkdocs-session" || !c.HttpOnly || c.SameSite != http.SameSiteStrictMode {
+		t.Fatal("incorrect HTTP cookie")
+	}
+	if w.Header().Get("Strict-Transport-Security") != "" {
+		t.Fatal("HSTS on HTTP")
+	}
+	var auth struct {
+		User User   `json:"user"`
+		CSRF string `json:"csrf"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &auth)
+	r = httptest.NewRequest("GET", "http://localhost:8080/api/workspace", nil)
+	r.AddCookie(c)
+	r.Header.Set("X-Session-User", auth.User.ID)
+	w = httptest.NewRecorder()
+	a.ServeHTTP(w, r)
+	expectStatus(t, w, 200)
+	r = httptest.NewRequest("PUT", "http://localhost:8080/api/workspace", strings.NewReader(`{}`))
+	r.AddCookie(c)
+	r.Header.Set("Origin", a.cfg.Origin)
+	r.Header.Set("X-Session-User", auth.User.ID)
+	r.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	a.ServeHTTP(w, r)
+	expectStatus(t, w, 403)
+}
+func TestBootstrapIsIdempotent(t *testing.T) {
+	a, _ := setup(t)
+	if e := a.store.bootstrapAdmin("admin", testPassword); e != nil {
+		t.Fatal(e)
+	}
+	if e := a.store.bootstrapAdmin("another-admin", "changed-password-123"); e != nil {
+		t.Fatal(e)
+	}
+	a.store.db.View(func(tx *recordTx) error {
+		users, e := a.store.users(tx)
+		if len(users) != 1 || users[0].Username != "admin" || !verifyPassword(users[0], testPassword) {
+			t.Fatal("bootstrap changed existing accounts")
+		}
+		return e
+	})
+}
+
+func TestMigrationPreservesEncryptedRecordsAndRefusesOverwrite(t *testing.T) {
+	a, _ := setup(t)
+	key := bytes.Repeat([]byte{7}, 32)
+	path := filepath.Join(t.TempDir(), "legacy.db")
+	old, e := openStore(path, key)
+	if e != nil {
+		t.Fatal(e)
+	}
+	user, e := old.createUser("legacy-user", testPassword, "admin")
+	if e != nil {
+		t.Fatal(e)
+	}
+	raw, _ := json.Marshal(workspaceBody(0, "legacy-private-document")["workspace"])
+	if e = old.db.Update(func(tx *recordTx) error {
+		return old.put(tx, "workspaces", user.ID, Document{Revision: 9, Workspace: raw})
+	}); e != nil {
+		t.Fatal(e)
+	}
+	old.db.Close()
+	if e = a.store.migrateBbolt(path, key); e != nil {
+		t.Fatal(e)
+	}
+	if e = a.store.db.View(func(tx *recordTx) error {
+		var u User
+		if e := a.store.get(tx, "users", user.ID, &u); e != nil {
+			return e
+		}
+		if !verifyPassword(u, testPassword) {
+			t.Fatal("password lost in migration")
+		}
+		var d Document
+		if e := a.store.get(tx, "workspaces", user.ID, &d); e != nil {
+			return e
+		}
+		if d.Revision != 9 || !strings.Contains(string(d.Workspace), "legacy-private-document") {
+			t.Fatal("document lost")
+		}
+		return nil
+	}); e != nil {
+		t.Fatal(e)
+	}
+	if e = a.store.migrateBbolt(path, key); e == nil {
+		t.Fatal("migration overwrote existing records")
+	}
 }
