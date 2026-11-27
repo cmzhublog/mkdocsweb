@@ -1,0 +1,142 @@
+/* A quiet writing desk: shared UI tokens, with document typography left intact. */
+:root {
+  --paper:#ffffff;
+  --sidebar:#f5f8f6;
+  --ink:#263a30;
+  --muted:#62736a;
+  --line:#dfe7e1;
+  --green:#34664c;
+  --green-soft:#e5efe8;
+  --hover:#edf2ee;
+  --code:#f4f7f5;
+  --ui-raised:#ffffff;
+  --ui-shadow:0 16px 48px #193a2321,0 2px 8px #193a230a;
+  --ui-danger:#b34235;
+  --ui-danger-soft:#fbeeea;
+  --ui-accent-line:#9cb4a4;
+}
+:root[data-theme=dark] {
+  --paper:#202824;
+  --sidebar:#1a221e;
+  --ink:#e0e9e3;
+  --muted:#a5b6ab;
+  --line:#3c4a41;
+  --green:#a4d2b4;
+  --green-soft:#30483a;
+  --hover:#2c3a31;
+  --code:#26332b;
+  --ui-raised:#28342d;
+  --ui-shadow:0 16px 48px #0005,0 2px 8px #0002;
+  --ui-danger:#f1a497;
+  --ui-danger-soft:#482d2a;
+  --ui-accent-line:#6e947c;
+}
+
+/* Keep navigation dimensions and the one-line toolbar unchanged. */
+#app .sidebar { background:var(--sidebar); }
+#app .brand { color:var(--ink); letter-spacing:-.6px; }
+#app .brand b { color:var(--muted); }
+#app .brand-mark { background:#34664c; border-radius:9px; }
+#app .search { border:1px solid var(--line); border-radius:7px; background:var(--paper); }
+#app .search:focus-within { border-color:var(--green); box-shadow:0 0 0 3px var(--green-soft); }
+#app .search input { color:var(--ink); }
+#app .search input::placeholder { color:var(--muted); opacity:1; }
+#app .search kbd { margin-right:7px; background:var(--sidebar); }
+#app .section-label { color:var(--muted); font-weight:500; letter-spacing:0; }
+#app #note-list .folder-row { color:var(--muted); }
+#app #note-list .folder-row.selected-folder { color:var(--green); }
+#app #note-list .note-item:hover,#app #note-list .folder-row:hover { background:var(--hover); }
+#app #note-list .note-item.active { background:var(--green-soft); color:var(--green); }
+#app #note-list .note-item.active .tree-title { font-weight:600; }
+#app #note-list .note-item.active>.lucide { color:var(--green); }
+#app #note-list .note-item.active:before { background:var(--green); }
+#app .import-button { background:var(--paper); color:var(--ink); box-shadow:0 1px 2px #173a2204; }
+#app .import-button:hover { background:var(--green-soft); border-color:var(--ui-accent-line); }
+#app .sidebar-meta { background:var(--sidebar); }
+#app .topbar,#app .statusbar { background:var(--paper); }
+#app .topbar .text-button,#app .outline-heading { color:var(--muted); }
+#app .topbar .text-button:hover,#app .icon-button:hover { color:var(--green); }
+#app .export-button { background:var(--paper); border-color:var(--line); }
+#app .export-button:hover,#app .export-button[aria-expanded=true] { color:var(--green); border-color:var(--ui-accent-line); background:var(--green-soft); }
+#app .font-picker select { background:var(--sidebar); border-color:var(--line); }
+#app .font-picker select:hover { border-color:var(--ui-accent-line); }
+#app .editor-tools-scroll { scrollbar-color:var(--ui-accent-line) transparent; }
+#app .editor-tools-scroll::-webkit-scrollbar-thumb { background:var(--ui-accent-line); }
+#app .document-format-toolbar .toastui-editor-defaultUI-toolbar { border-radius:0; }
+#app .document-format-toolbar .toastui-editor-toolbar-icons:hover { background-color:var(--hover); border-radius:5px; }
+#app .eyebrow { color:var(--muted); letter-spacing:.6px; }
+#app #doc-title { letter-spacing:0; }
+#app .document-meta { color:var(--muted); }
+#app #delete-note:hover { color:var(--ui-danger); background:var(--ui-danger-soft); }
+#app .outline-tip { color:var(--muted); }
+#app .outline-tip>span { color:var(--muted); letter-spacing:1px; }
+#app #outline-list button:hover { color:var(--green); background:var(--hover); }
+#app #outline-list button.current { background:var(--green-soft); }
+#app .status-dot { background:var(--green); }
+
+/* Controls, forms and dialogs share the same surfaces in either theme. */
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible {
+  outline:2px solid var(--green); outline-offset:3px;
+}
+#app .search input:focus-visible { outline:none; }
+#app .dropdown,dialog { border-color:var(--line); background:var(--ui-raised); color:var(--ink); box-shadow:var(--ui-shadow); }
+#app .dropdown button:hover { color:var(--green); background:var(--green-soft); }
+dialog::backdrop { background:#10251a55; backdrop-filter:blur(3px); }
+.git-heading h2,dialog h2 { font-weight:600; letter-spacing:0; }
+.git-label input,.git-label select,.folder-name-label input,.account-dialog input,.account-dialog select {
+  border-color:var(--line); background:var(--paper); color:var(--ink);
+}
+.git-label input:focus-visible,.git-label select:focus-visible,.account-dialog input:focus-visible,.account-dialog select:focus-visible {
+  border-color:var(--green); outline-offset:2px;
+}
+.git-dialog .git-help,.account-dialog p,.account-user span { color:var(--muted); }
+.account-dialog { background:var(--ui-raised); color:var(--ink); border-color:var(--line); }
+.account-dialog button { border-color:var(--line); color:var(--ink); }
+.account-dialog button:hover { background:var(--hover); }
+.account-user { border-color:var(--line); }
+#account-status,#git-status.git-error { color:var(--ui-danger); }
+.primary,.account-dialog button.primary,.auth-card .primary {
+  background:#34664c; border-color:#34664c; color:#fff;
+}
+.primary:hover,.account-dialog button.primary:hover,.auth-card .primary:hover { background:#29563e; color:#fff; }
+.git-dialog .primary { border-color:#34664c; }
+button:disabled { opacity:.5; }
+
+/* The native editor's lazy-loaded CSS must not repaint code headers or wrap lines. */
+#app .toastui-editor-contents pre code { white-space:pre; overflow-wrap:normal; word-break:normal; font-size:13px; line-height:1.75; }
+#app .toastui-editor-contents pre { border:1px solid var(--line); border-radius:8px; }
+#app .toastui-editor-contents .code-block-shell pre { margin:0!important; padding:48px 18px 18px!important; }
+#app .toastui-editor-ww-code-block-highlighting:after {
+  top:9px; left:12px; right:auto; height:24px; max-width:calc(100% - 100px); overflow:hidden;
+  color:var(--muted); background-color:transparent; font:12px/21px system-ui; padding-top:0;
+}
+#app .toastui-editor-contents .code-copy { border-color:var(--line); border-radius:5px; box-shadow:none; font:12px/18px system-ui; }
+#app .toastui-editor-contents blockquote { border-left-color:var(--ui-accent-line)!important; }
+#app .toastui-editor-contents blockquote,#app .toastui-editor-contents blockquote p { color:var(--muted)!important; }
+#app .toastui-editor-contents table th { border-color:var(--line); }
+#app .toastui-editor-contents :not(pre)>code { border-radius:4px; padding:2px 4px; }
+#app .toastui-editor-contents a { text-decoration:underline; text-decoration-color:var(--ui-accent-line); text-underline-offset:3px; }
+
+/* Login uses the same writing-space identity, without adding new steps. */
+#app.auth-shell { background:var(--sidebar); color:var(--ink); }
+#app .auth-card { background:var(--paper); border-color:var(--line); border-radius:12px; box-shadow:var(--ui-shadow); }
+#app .auth-brand { color:var(--green); font-weight:650; letter-spacing:-.6px; }
+#app .auth-brand b { color:var(--muted); font-size:16px; font-weight:400; }
+#app .auth-card h1 { color:var(--ink); font-size:24px; font-weight:600; }
+#app .auth-card p,#app .auth-card small { color:var(--muted); }
+#app .auth-card input { background:var(--paper); border-color:var(--line); }
+#app .auth-card .auth-error { color:var(--ui-danger); }
+
+@media(max-width:700px) {
+  #app .sidebar { box-shadow:8px 0 30px #10251a18; }
+  .account-dialog { padding:20px; }
+  #app .auth-card { padding:28px; }
+}
+@media(prefers-reduced-motion:reduce) {
+  button,a,input,select { transition:none!important; }
+  *,*::before,*::after { scroll-behavior:auto!important; }
+}
+@media print {
+  :root { --ink:#222; --paper:#fff; --code:#f4f6f5; --line:#ddd; }
+  #app .toastui-editor-contents .code-copy { display:none!important; }
+}

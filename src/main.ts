@@ -1,4 +1,5 @@
 import './style.css';
+import './ui-polish.css';
 import { api, APIError, setSession, type Session } from './api';
 import { parseWorkspace, type Workspace } from './documents';
 const app = document.querySelector<HTMLElement>('#app')!;

@@ -17,6 +17,7 @@ import { documentArchive } from './image-export';
 import { createEditorToolbar } from './editor-toolbar';
 import { codeBlocks, previewCodeCopy } from './code-blocks';
 import './style.css';
+import './ui-polish.css';
 
 const icons = { GitBranch, FilePlus, Search, FolderOpen, Folder, FolderPlus, ChevronRight, Upload, HardDrive, Moon, PanelLeft, Maximize, Download, ChevronDown, FileText, Trash2, PenLine, CodeXml, ListTree, Sparkles, Keyboard, CheckCheck, CircleAlert, Sun };
 const icon = (name: string, cls = '') => `<i data-lucide="${name}" class="${cls}"></i>`;
