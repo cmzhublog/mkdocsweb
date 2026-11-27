@@ -23,6 +23,16 @@ try {
 } catch { storageHealthy = false; workspace = initialWorkspace(); }
 function initialWorkspace(): Workspace { return { activeId: 'welcome', notes: [{ id: 'welcome', title: '欢迎来到你的写作空间', content: welcome, updatedAt: Date.now() }] }; }
 const active = () => workspace.notes.find(n => n.id === workspace.activeId)!;
+const fontOptions = [
+  { id: 'songti', label: '宋体', family: '"SimSun", "宋体", "Songti SC", "STSong", serif' },
+  { id: 'heiti', label: '黑体', family: '"SimHei", "黑体", "Heiti SC", "PingFang SC", "Microsoft YaHei", sans-serif' },
+  { id: 'kaiti', label: '楷体', family: '"KaiTi", "楷体", "Kaiti SC", "STKaiti", serif' },
+  { id: 'fangsong', label: '仿宋', family: '"FangSong", "仿宋", "STFangsong", "Songti SC", serif' },
+  { id: 'system', label: '系统默认', family: 'system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif' },
+];
+let documentFont = fontOptions[0];
+try { documentFont = fontOptions.find(font => font.id === localStorage.getItem('mkdocsweb.font')) ?? fontOptions[0]; } catch {}
+document.documentElement.style.setProperty('--document-font', documentFont.family);
 let sourceMode = false;
 let focusMode = false;
 let theme = 'light';
@@ -40,7 +50,7 @@ $('#app').innerHTML = `
   </aside>
   <main class="main">
     <header class="topbar"><div class="breadcrumb"><button id="sidebar-toggle" class="icon-button" aria-label="显示或隐藏文档列表">${icon('panel-left')}</button><span class="crumb-parent">我的文档</span><span class="slash">/</span><span id="crumb-title"></span></div><div class="top-actions"><span id="save-state" role="status"></span><button id="focus" class="text-button">${icon('maximize')}<span>专注</span></button><div class="export-wrap"><button id="export" class="export-button" aria-expanded="false">${icon('download')} 导出 ${icon('chevron-down')}</button><div id="export-menu" class="dropdown" hidden><button data-export="md">Markdown (.md)</button><button data-export="html">网页 (.html)</button><button data-export="print">打印 / 存为 PDF</button><button data-export="backup">备份所有文档 (.json)</button><button data-export="restore">恢复文档备份</button></div></div></div></header>
-    <div class="work-area"><section class="writing-pane" aria-label="写作区"><div class="document-heading"><div class="eyebrow">你的文字，值得被认真对待</div><div class="title-row"><input id="doc-title" aria-label="文档标题" maxlength="100"/><button id="delete-note" class="icon-button" title="删除文档" aria-label="删除当前文档">${icon('trash-2')}</button></div><div class="document-meta">${icon('file-text')}<span>Markdown 文档</span><span class="meta-dot">·</span><span id="updated-at"></span></div></div><div class="editor-bar"><span class="editor-bar-label">${icon('pen-line')} 开始书写</span><button id="source-toggle" class="mode-toggle" aria-pressed="false">${icon('code-xml')}<span>源码模式</span></button></div><div id="editor"></div></section><aside class="outline" aria-label="文档大纲"><div class="outline-heading">${icon('list-tree')} 文档大纲</div><nav id="outline-list"></nav><div class="outline-tip">${icon('sparkles')}<p>让文字回归文字。<br/>让思绪自由流淌。</p><span>WRITE SOMETHING GOOD.</span></div></aside></div>
+    <div class="work-area"><section class="writing-pane" aria-label="写作区"><div class="document-heading"><div class="eyebrow">你的文字，值得被认真对待</div><div class="title-row"><input id="doc-title" aria-label="文档标题" maxlength="100"/><button id="delete-note" class="icon-button" title="删除文档" aria-label="删除当前文档">${icon('trash-2')}</button></div><div class="document-meta">${icon('file-text')}<span>Markdown 文档</span><span class="meta-dot">·</span><span id="updated-at"></span></div></div><div class="editor-bar"><span class="editor-bar-label">${icon('pen-line')} 开始书写</span><div class="writing-options"><label class="font-picker"><span>字体</span><select id="font-select" aria-label="文档字体" title="使用设备已安装的字体">${fontOptions.map(font => `<option value="${font.id}" ${font.id === documentFont.id ? 'selected' : ''}>${font.label}</option>`).join('')}</select>${icon('chevron-down')}</label><button id="source-toggle" class="mode-toggle" aria-pressed="false">${icon('code-xml')}<span>源码模式</span></button></div></div><div id="editor"></div></section><aside class="outline" aria-label="文档大纲"><div class="outline-heading">${icon('list-tree')} 文档大纲</div><nav id="outline-list"></nav><div class="outline-tip">${icon('sparkles')}<p>让文字回归文字。<br/>让思绪自由流淌。</p><span>WRITE SOMETHING GOOD.</span></div></aside></div>
     <footer class="statusbar"><div><span class="status-dot"></span><span id="footer-state">所有更改已保存至本地</span></div><div><span id="word-count"></span><span class="status-divider">|</span><span id="read-time"></span><span class="status-divider">|</span><span>UTF-8</span><span class="status-divider">|</span><button id="shortcuts">${icon('keyboard')} 快捷键</button></div></footer>
   </main><input id="file-input" type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" multiple hidden/><input id="backup-input" type="file" accept=".json,application/json" hidden/><div id="toast" role="status" hidden></div><dialog id="dialog"><form method="dialog"><div id="dialog-content"></div><div class="dialog-actions"><button value="cancel">取消</button><button value="confirm" class="primary">确定</button></div></form></dialog>`;
 
@@ -120,9 +130,14 @@ function exportNote(format: string) {
   if (format === 'backup') { download(JSON.stringify(workspace, null, 2), 'mkdocsweb-backup.json', 'application/json'); return; }
   if (format === 'print') { if (sourceMode) $('#source-toggle').click(); window.print(); return; }
   if (format === 'md') download(active().content, `${filename(active().title)}.md`, 'text/markdown;charset=utf-8');
-  else { const html = DOMPurify.sanitize(editor.getHTML()); download(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(active().title)}</title><style>body{max-width:800px;margin:60px auto;padding:0 24px;font:17px/1.85 system-ui;color:#29342e}pre{overflow:auto;padding:20px;background:#f4f6f5}code{font-family:monospace}blockquote{border-left:3px solid #6a927b;margin-left:0;padding-left:20px;color:#66756c}table{border-collapse:collapse;width:100%}td,th{padding:10px;border:1px solid #ddd}img{max-width:100%}</style><body>${html}</body></html>`, `${filename(active().title)}.html`, 'text/html;charset=utf-8'); }
+  else { const html = DOMPurify.sanitize(editor.getHTML()); download(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(active().title)}</title><style>body{max-width:800px;margin:60px auto;padding:0 24px;font:17px/1.85 ${documentFont.family};color:#29342e}pre{overflow:auto;padding:20px;background:#f4f6f5}code{font-family:monospace}blockquote{border-left:3px solid #6a927b;margin-left:0;padding-left:20px;color:#66756c}table{border-collapse:collapse;width:100%}td,th{padding:10px;border:1px solid #ddd}img{max-width:100%}</style><body>${html}</body></html>`, `${filename(active().title)}.html`, 'text/html;charset=utf-8'); }
   notify('已导出，文字随你带走。');
 }
+$<HTMLSelectElement>('#font-select').onchange = event => {
+  documentFont = fontOptions.find(font => font.id === (event.target as HTMLSelectElement).value) ?? fontOptions[0];
+  document.documentElement.style.setProperty('--document-font', documentFont.family);
+  try { localStorage.setItem('mkdocsweb.font', documentFont.id); } catch { notify('字体已切换，浏览器无法记住本次设置。'); }
+};
 $('#new-note').onclick = () => createNote();
 $('#search').oninput = renderNotes;
 $('#note-list').onclick = event => { const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-id]'); if (button) selectNote(button.dataset.id!); };
