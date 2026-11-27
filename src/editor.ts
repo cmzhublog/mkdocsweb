@@ -7,6 +7,7 @@ import { createIcons, GitBranch, FilePlus, Search, FolderOpen, Folder, FolderPlu
 import { canMoveFolder, ensureFolderPath, mergeWorkspace, filename, headings, parseWorkspace, readingStats, type Workspace } from './documents';
 import { welcome } from './welcome';
 import { markdownShortcuts } from './markdown-shortcuts';
+import { clickToWrite } from './click-to-write';
 import { createGitPanel } from './git-ui';
 import { WorkspaceSaver } from './autosave';
 import { accountPanel } from './account';
@@ -67,7 +68,7 @@ const editors = new Map<string, { instance: Editor; host: HTMLDivElement; toolba
 function makeEditor(content: string) {
   const noteId = workspace.activeId;
   const host = document.createElement('div'); host.className = 'editor-instance'; $('#editor').append(host);
-  const instance = new Editor({ el: host, height: '100%', initialEditType: sourceMode ? 'markdown' : 'wysiwyg', previewStyle: 'vertical', initialValue: content, language: 'zh-CN', usageStatistics: false, hideModeSwitch: true, theme, autofocus: false, plugins: [markdownShortcuts, codeBlocks, documentImages(session.user.id, noteId, workspace)], placeholder: '直接输入 Markdown：## 完整标题后回车渲染标题，```javascript 后回车创建代码块…', toolbarItems: [['heading', 'bold', 'italic', 'strike'], ['hr', 'quote'], ['ul', 'ol', 'task'], ['table', 'link', 'image'], ['code', 'codeblock']], hooks: { addImageBlobHook: (blob, callback) => { uploadImage(noteId, blob, callback); } } });
+  const instance = new Editor({ el: host, height: '100%', initialEditType: sourceMode ? 'markdown' : 'wysiwyg', previewStyle: 'vertical', initialValue: content, language: 'zh-CN', usageStatistics: false, hideModeSwitch: true, theme, autofocus: false, plugins: [markdownShortcuts, clickToWrite, codeBlocks, documentImages(session.user.id, noteId, workspace)], placeholder: '直接输入 Markdown：## 完整标题后回车渲染标题，```javascript 后回车创建代码块…', toolbarItems: [['heading', 'bold', 'italic', 'strike'], ['hr', 'quote'], ['ul', 'ol', 'task'], ['table', 'link', 'image'], ['code', 'codeblock']], hooks: { addImageBlobHook: (blob, callback) => { uploadImage(noteId, blob, callback); } } });
   const stopCodeCopy = previewCodeCopy(host);
   const destroyEditor = instance.destroy.bind(instance);
   instance.destroy = () => { stopCodeCopy(); destroyEditor(); };
