@@ -1,3 +1,4 @@
+import { api } from './api';
 import type { Workspace } from './documents';
 import { applySnapshot, attachRepository, GitHubClient, GitDocumentLoader, gitChanges, parseCloneUrl, repositoryFiles, repositoryPath } from './github';
 import type { GitChange, GitRepository } from './git-types';
@@ -68,9 +69,9 @@ export function createGitPanel(workspace: Workspace, hooks: {
     dialog.innerHTML = `<form method="dialog"><div class="git-heading"><h2>GitHub 仓库</h2><button value="cancel" aria-label="关闭 GitHub 面板" class="git-close">×</button></div>
       <label class="git-label">当前仓库<select id="git-selected"><option value="">导入新仓库…</option>${(workspace.repositories ?? []).map(r => `<option value="${esc(r.id)}" ${r.id === selectedId ? 'selected' : ''}>${esc(`${r.owner}/${r.repo} · ${r.branch}`)}</option>`).join('')}</select></label>
       ${repository ? `<div class="git-repository-info"><strong>${esc(repository.owner)}/${esc(repository.repo)}</strong><span>分支 ${esc(repository.branch)}</span></div>` : `<label class="git-label">Clone 地址<input id="git-url" placeholder="https://github.com/用户名/文档仓库.git" autocomplete="off" /></label><label class="git-label">分支（留空使用默认分支）<input id="git-branch" placeholder="例如 main" autocomplete="off" /></label>`}
-      <label class="git-label">GitHub 访问令牌 <span>公开仓库导入可留空；私有仓库和 push 需要填写</span><input id="git-token" type="password" placeholder="令牌仅保留在当前页面会话" autocomplete="off" spellcheck="false" /></label>
-      <p class="git-help">令牌仅发送给 GitHub，不写入本地文档或备份。请选择目标仓库并授予 Contents 读写权限。刷新页面后需重新填写。</p>
-      ${repository ? `<div class="git-actions"><button type="button" id="git-pull">拉取最新</button><button type="button" id="git-review">检查更改</button></div><div id="git-changes" aria-label="待提交更改"></div><label class="git-label">提交说明<input id="git-message" value="更新 Markdown 文档" maxlength="500" /></label><p class="git-help">仅提交该仓库文件夹内的文档。重命名或移动文件会改变仓库路径，删除也会同步；其他类型文件保持不变。</p><button type="button" id="git-push" class="primary" disabled>提交并 push</button>` : '<button type="button" id="git-clone" class="primary">导入仓库</button>'}
+      <label class="git-label">GitHub 访问令牌 <span>公开仓库导入可留空；私有仓库和 push 需要填写</span><input id="git-token" type="password" placeholder="留空使用当前账号已加密保存的令牌" autocomplete="off" spellcheck="false" /></label>
+      <p class="git-help">令牌通过 HTTPS 发送至后端，以 AES-256-GCM 加密保存，仅供当前账号访问 GitHub，不包含在文档备份中。填写后执行导入、拉取或 push 即保存；留空沿用已保存令牌。请授予目标仓库 Contents 读写权限。</p>
+      ${repository ? `<div class="git-actions"><button type="button" id="git-pull">拉取最新</button><button type="button" id="git-review">检查更改</button><button type="button" id="git-forget">删除已存令牌</button></div><div id="git-changes" aria-label="待提交更改"></div><label class="git-label">提交说明<input id="git-message" value="更新 Markdown 文档" maxlength="500" /></label><p class="git-help">仅提交该仓库文件夹内的文档。重命名或移动文件会改变仓库路径，删除也会同步；其他类型文件保持不变。</p><button type="button" id="git-push" class="primary" disabled>提交并 push</button>` : '<button type="button" id="git-clone" class="primary">导入仓库</button>'}
       <p id="git-status" role="status" aria-live="polite"></p></form>`;
     dialog.querySelector<HTMLSelectElement>('#git-selected')!.onchange = event => { selectedId = (event.target as HTMLSelectElement).value; render(); };
     if (!repository) {
@@ -86,6 +87,7 @@ export function createGitPanel(workspace: Workspace, hooks: {
         hooks.notify(`已载入 ${snapshot.files.length} 份文档的目录，点击文件时读取内容。`);
       });
     } else {
+      dialog.querySelector<HTMLButtonElement>('#git-forget')!.onclick = () => run(async () => { await api('/git/credential', 'DELETE', { repository: `${repository.owner}/${repository.repo}` }); tokens.delete(tokenKey(repository)); field('git-token').value = ''; status('当前账号为此仓库保存的令牌已删除。'); });
       dialog.querySelector<HTMLButtonElement>('#git-review')!.onclick = () => {
         try { reviewed = gitChanges(workspace, repository); renderPreview(repository, reviewed); status(reviewed.length ? `共 ${reviewed.length} 项更改。可展开查看内容，确认后提交。` : '文档与导入时的版本一致。'); }
         catch (error) { reviewed = null; status((error as Error).message, true); }

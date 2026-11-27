@@ -1,3 +1,4 @@
+import { APIError, gitFetch } from './api.ts';
 import { ensureFolderPath, type Workspace, type Note } from './documents.ts';
 import type { GitChange, GitFile, GitRepository, GitSnapshot } from './git-types';
 
@@ -118,7 +119,8 @@ export function applySnapshot(workspace: Workspace, repository: GitRepository, s
 export class GitHubClient {
   private token: string;
   private request: typeof fetch;
-  constructor(token = '', request: typeof fetch = globalThis.fetch.bind(globalThis)) { this.token = token; this.request = request; }
+  private backend: boolean;
+  constructor(token = '', request: typeof fetch = gitFetch) { this.token = token; this.request = request; this.backend = request === gitFetch; }
 
   private async api<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
     let response: Response;
@@ -128,7 +130,7 @@ export class GitHubClient {
         headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}) },
         ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(60000),
       });
-    } catch { throw new Error('无法连接 GitHub，请检查网络。若刚执行 push，请先到 GitHub 确认结果再操作。'); }
+    } catch (error) { if (error instanceof APIError) throw error; throw new Error('无法连接 GitHub，请检查网络。若刚执行 push，请先到 GitHub 确认结果再操作。'); }
     if (!response.ok) {
       if (response.status === 401) throw new Error('GitHub 令牌无效或已过期，请重新填写。');
       if (response.status === 403) throw new Error('GitHub 拒绝请求：请检查 API 配额、令牌 Contents 权限或分支保护规则。');
@@ -169,7 +171,7 @@ export class GitHubClient {
   }
 
   async push(repository: GitRepository, changes: GitChange[], message: string): Promise<{ headSha: string; treeSha: string }> {
-    if (!this.token) throw new Error('push 需要具有仓库 Contents 读写权限的 GitHub 令牌。');
+    if (!this.token && !this.backend) throw new Error('push 需要具有仓库 Contents 读写权限的 GitHub 令牌。');
     if (!changes.length || !message.trim()) throw new Error('请先检查更改并填写提交说明。');
     const base = this.base(repository.owner, repository.repo);
     if (await this.head(repository.owner, repository.repo, repository.branch) !== repository.headSha) throw new Error('远端分支已有新提交，已停止 push。请先备份本地改动，与最新版本合并后再提交。');

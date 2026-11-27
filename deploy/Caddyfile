@@ -1,0 +1,4 @@
+# Replace the domain; Caddy obtains/renews a public certificate automatically.
+notes.example.com {
+    reverse_proxy 127.0.0.1:8080
+}

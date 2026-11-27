@@ -1,7 +1,7 @@
 import type { GitRepository } from './git-types';
 export interface Note { id: string; title: string; content: string; updatedAt: number; folderId?: string | null; fileExtension?: string; remote?: { repositoryId: string; path: string; sha: string } }
 export interface Folder { id: string; name: string; parentId: string | null; collapsed: boolean }
-export interface Workspace { notes: Note[]; activeId: string; folders: Folder[]; repositories?: GitRepository[] }
+export interface Workspace { notes: Note[]; activeId: string; folders: Folder[]; repositories?: GitRepository[]; settings?: { font?: string; theme?: string } }
 export const STORAGE_KEY = 'mkdocsweb.workspace.v1';
 export function headings(markdown: string) {
   let fence = '';
@@ -38,7 +38,8 @@ export function parseWorkspace(raw: string | null): Workspace | null {
       if (new Set(repositories.map(r => r.id)).size !== repositories.length || new Set(repositories.map(r => r.rootFolderId)).size !== repositories.length) return null;
     }
     if (data.notes.some((note: Note) => note.remote !== undefined && (!note.remote || typeof note.remote !== 'object' || !repositories?.some(r => r.id === note.remote!.repositoryId) || typeof note.remote.path !== 'string' || !note.remote.path || note.remote.path.startsWith('/') || note.remote.path.split('/').some(part => !part || part === '.' || part === '..') || !/^[a-f\d]{40}$/i.test(note.remote.sha) || note.content !== ''))) return null;
-    return { notes: data.notes, folders, ...(repositories ? { repositories } : {}), activeId: data.notes.some((n: Note) => n.id === data.activeId) ? data.activeId : data.notes[0].id };
+    const settings = data.settings && typeof data.settings === 'object' ? { font: ['songti', 'heiti', 'kaiti', 'fangsong', 'system'].includes(data.settings.font) ? data.settings.font : 'songti', theme: data.settings.theme === 'dark' ? 'dark' : 'light' } : undefined;
+    return { notes: data.notes, folders, ...(settings ? { settings } : {}), ...(repositories ? { repositories } : {}), activeId: data.notes.some((n: Note) => n.id === data.activeId) ? data.activeId : data.notes[0].id };
   } catch { return null; }
 }
 export function canMoveFolder(folders: Folder[], id: string, parentId: string | null): boolean {

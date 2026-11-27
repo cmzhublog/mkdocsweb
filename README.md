@@ -1,6 +1,6 @@
 # MkDocs Web
 
-一个简洁、专注、本地优先的网页版 Markdown 编辑器。灵感来自 Typora 的即时写作体验。
+一个简洁、专注、支持独立账号的网页版 Markdown 编辑器。灵感来自 Typora 的即时写作体验。
 
 > Typora 本体是商业闭源软件。本项目独立实现，不包含 Typora 源码，也不属于 Typora 官方产品。名称中的 MkDocs 与 Python 的 MkDocs 静态站点生成器无关联。
 
@@ -11,43 +11,73 @@
 - 标题、加粗、斜体、引用、列表、任务列表、表格、链接、代码块
 - 多文档创建、重命名、删除与全文搜索
 - 精简文件夹树、嵌套目录、折叠展开、目录导入和拖动整理
-- 浏览器本地自动保存、刷新恢复，存储失败提示
+- 账号内自动保存、刷新恢复、版本冲突保护和保存失败提示
 - 动态文档大纲与点击跳转、字符统计、阅读时间
 - Markdown / TXT 导入，Markdown / HTML 导出
 - 全文档 JSON 备份与合并恢复
 - 打印 / 存为 PDF、专注模式、深浅主题、移动端布局
 - 文档字体选择（默认宋体，另提供黑体、楷体、仿宋、系统默认），记住偏好并应用于 HTML 导出和打印
 - GitHub 仓库 clone 地址导入、分支选择、拉取最新、审阅更改后提交并 push
-- GitHub Pages 自动部署工作流
+- Go 后端、管理员用户管理、HTTPS 鉴权和加密存储
 
-## 本地运行
+## 构建与运行
 
-需要 Node.js 22.18+（推荐 Node.js 24 LTS）和 npm。
+需要 Node.js 24+、Go 1.26.11+。前端和 API 使用同一 HTTPS 域名；**GitHub Pages 和其他纯静态托管无法运行此版本的后端**。工作流已改为前后端检查，不再发布静态 Pages；之前发布的旧 Pages 需在 GitHub Settings → Pages 中手动取消发布，以免继续访问旧版。
 
 ```sh
 npm ci
-npm run dev
+npm test
+npm run build
+cd backend
+go test -race ./...
+go vet ./...
+go build -o mkdocsweb .
+cd ..
+cp .env.example .env
+chmod 600 .env
+./backend/mkdocsweb keygen
 ```
 
-打开终端中显示的本地地址，默认 `http://127.0.0.1:5173/`。
+把生成的密钥写入 `.env` 的 `MASTER_KEY`，修改 `APP_ORIGIN` 为实际 HTTPS 域名（末尾不带 `/`）。不要把密钥或令牌粘贴到聊天、仓库或日志中。
 
 ```sh
-npm test       # 存储恢复、大纲解析、文件名和字符统计测试
-npm run build # TypeScript 检查和生产构建
-npm run preview
+set -a
+. ./.env
+set +a
+# 首次启动前执行，密码从终端隐藏输入，无默认账号：
+./backend/mkdocsweb create-admin admin
+./backend/mkdocsweb
 ```
 
-## 部署
+默认模式要求在**同一主机**使用 Caddy/Nginx 提供 HTTPS，代理到 `127.0.0.1:8080`。参考 [deploy/Caddyfile](deploy/Caddyfile)，将其中域名替换为 `APP_ORIGIN` 对应域名。后端只信任显式配置的代理 CIDR，并且代理模式强制绑定回环地址；代理必须覆盖 `X-Forwarded-Proto`，不得把明文 HTTP 请求标成 HTTPS。直接 HTTP 访问会返回 426。
 
-仓库已提供 `.github/workflows/deploy.yml`：
+也可让 Go 直接提供 HTTPS：删除 `TRUSTED_PROXY_CIDR`，配置 `TLS_CERT_FILE`、`TLS_KEY_FILE` 和 `LISTEN_ADDR=0.0.0.0:8443`，同时将 `APP_ORIGIN` 设置为实际带端口的 HTTPS 地址。证书必须由浏览器信任的 CA 签发。开发时 `npm run dev` 只能查看前端；完整登录、保存需要使用 Go 提供的 HTTPS 服务。前端修改后重新构建并刷新。
 
-1. 在 GitHub 仓库的 **Settings → Pages → Build and deployment → Source** 中选择 **GitHub Actions**。
-2. 推送代码到 `main`，或在 Actions 中手动运行 **Deploy to GitHub Pages**。
-3. 在成功的工作流中打开返回的网站地址。对于当前仓库，默认路径为 `https://cmzhublog.github.io/mkdocsweb/`。
+### Docker
 
-构建时自动配置仓库子路径。上述 URL 只有在工作流部署成功后才可访问。
+```sh
+docker build -t mkdocsweb .
+# .env.docker 包含 MASTER_KEY、APP_ORIGIN、TLS_CERT_FILE=/certs/fullchain.pem、
+# TLS_KEY_FILE=/certs/privkey.pem；不要配置 TRUSTED_PROXY_CIDR。
+# 证书文件需允许容器 UID 10001 读取；容器内端口默认 8443。
+docker run --rm -it --env-file .env.docker -v mkdocs-data:/data mkdocsweb create-admin admin
+docker run -d --name mkdocsweb --restart unless-stopped --env-file .env.docker \
+  -p 8443:8443 -v mkdocs-data:/data -v "$PWD/certs:/certs:ro" mkdocsweb
+```
 
-也可部署到任意静态托管服务，构建命令为 `npm run build`，输出目录为 `dist`。部署到子路径时使用 `npm run build -- --base=/你的路径/`。
+Docker 配置已提供，构建步骤由前端和 Go 构建阶段组成。首次管理员须在服务启动前创建；数据库独占锁不允许 CLI 与正在运行的服务同时打开数据库。后续使用页面左下角「账号管理」创建普通用户或管理员、启停账号和重置密码。无注册 API 或注册页面；最后一个启用的管理员不可停用或降级。
+
+### 存储与接口安全
+
+- 业务 API 均要求服务端会话。登录接口通过账号密码认证，是建立会话的必要入口；页面静态资源允许加载，但不包含用户数据。所有请求（包括登录）都必须经 HTTPS。
+- Cookie 使用 `__Host-` 前缀、Secure、HttpOnly、SameSite=Strict，服务端只保存随机会话 ID 的哈希；会话空闲 30 分钟、最长 8 小时。密码使用 Argon2id（64 MiB、2 轮、2 路）加盐哈希，不可解密。
+- 写接口要求同源 Origin 和 CSRF 令牌。接口绑定页面所登录的用户 ID，防止同浏览器其他标签页切换账号后将旧用户文档保存到新账号。无跨域 CORS 授权。
+- Go 使用 bbolt 事务数据库；文档、仓库连接、Git 令牌、账号和会话记录均使用 AES-256-GCM 加密保存，随机 nonce，并把记录类型和所属用户绑定到附加认证数据。Git 凭据索引使用独立派生密钥的 HMAC。Git 令牌仅后端解密使用，不返回浏览器；用户可删除已存令牌。
+- API 从已验证会话确定所属用户，管理员只能管理账号，不能通过 API 查看其他用户文档或令牌。服务器持有主密钥，拥有服务器和密钥的人仍有解密能力；这不是端到端加密。
+- 账号停用、权限变更、密码修改或重置会撤销该用户所有会话。登录有来源地址限速（10 次 / 10 分钟；反向代理模式共享代理地址额度）。不记录请求正文、密码和令牌。
+- Git 代理仅允许固定 `api.github.com` 的必要 Git API 路径，拒绝重定向、任意目标 URL 和强制推送。服务端另有 64 MiB 请求/响应保护，非文档数量限制；超大工作区需分批拆分。
+
+`MASTER_KEY` 必须与数据库分别保管并安全备份；丢失密钥无法恢复，密钥不匹配或加密记录被篡改时会拒绝解密，不会新建空数据覆盖。当前为单实例服务，数据库使用独占文件锁；不支持多副本共享文件。备份时先停止服务，再复制数据库，并单独备份密钥。密钥轮换需安排解密重加密迁移，不能直接更换环境变量。
 
 ## GitHub 仓库工作流
 
@@ -58,11 +88,11 @@ npm run preview
 5. 填写提交说明，点击 **提交并 push**。所有文档更改生成一次提交，非文档文件通过原始 Git tree 保留，不进行强制推送。
 6. 没有本地更改时可点击 **拉取最新**；存在未提交改动时会拒绝覆盖。远端已有新提交时 push 会停止，请导出本地备份后在最新版本上手动合并。
 
-这是浏览器通过 GitHub REST Git API 实现的文档 checkout/commit/push 工作流，不在浏览器中执行系统 `git clone`，不需要 Git 代理或服务端。SSH 地址用于识别仓库，浏览器不会读取本机 SSH 密钥；认证仍使用页面中填写的令牌。支持 `github.com` 已初始化且有提交的仓库，不包含 GitHub Enterprise、子模块文档、符号链接或自动合并冲突。受保护分支可能拒绝直接 push，可连接可写分支后在 GitHub 创建 PR。
+这是前端通过 Go 后端代理 GitHub REST Git API 实现的文档 checkout/commit/push 工作流，不执行系统 `git clone`。SSH 地址用于识别仓库，浏览器不会读取本机 SSH 密钥；认证仍使用页面中填写的令牌。支持 `github.com` 已初始化且有提交的仓库，不包含 GitHub Enterprise、子模块文档、符号链接或自动合并冲突。受保护分支可能拒绝直接 push，可连接可写分支后在 GitHub 创建 PR。
 
-令牌仅存于当前页面的内存，关闭或刷新后重新填写，不进入 localStorage、JSON 备份、URL 或日志。请求只发送到 `https://api.github.com`；不允许 clone 地址携带用户名密码或令牌。仓库连接、文件目录、已读取的基准内容与文档缓存存入本地备份，私有文档仍需自行保护本地浏览器数据。
+令牌通过本站 HTTPS 接口发送到后端并加密保存，只有当前账号可使用；之后可留空沿用。在仓库面板填写令牌后执行导入、拉取或 push 时保存。点击「删除已存令牌」可删除该账号对该仓库保存的令牌。令牌不进入 localStorage、JSON 文档备份、URL 或日志。仓库目录和已读取文档随当前账号工作区加密存储。导出的 JSON/Markdown/HTML 是明文文件，请自行保管。
 
-仓库导入不设置文档数量、单份大小或总大小上限，正文要求 UTF-8。导入只读取仓库元信息和目录树，文档数量增加不会导致逐篇下载；打开文件时按固定版本读取，并合并同一文件的重复读取请求。文件树被 GitHub 截断时会停止导入。实际可导入规模仍取决于 GitHub API 限制、网络和浏览器内存；浏览器本地存储容量有限，较大的仓库可能无法自动持久化，此时请导出备份。GitHub API 配额用尽、网络故障、令牌权限不足时页面会提示；未认证请求通常配额较低，可填写令牌后重试。全文搜索仅覆盖文件名及已缓存的正文；未打开文档的正文尚未下载，不参与正文搜索。未打开文件的改名、移动沿用原始 Git blob，删除仅移除对应路径，不会将未加载内容当成空白提交。跨仓库移动的未打开文件需先打开，再提交。拉取时以文件 SHA 判断缓存是否仍有效。Git 不跟踪空文件夹，空目录不会提交。富文本编辑可能规范化 Markdown 格式，请在更改预览中审阅后提交。
+已取消原先 300 份文档、单份 2 MB、总计 8 MB 的导入限制，正文要求 UTF-8。导入只读取仓库元信息和目录树，文档数量增加不会导致逐篇下载；打开文件时按固定版本读取，并合并同一文件的重复读取请求。文件树被 GitHub 截断时会停止导入。实际可导入规模仍取决于 GitHub API 限制、网络和浏览器内存；工作区保存和 Git API 代理单次请求/响应保护上限为 64 MiB，超过时会明确报错，请导出备份并拆分工作区。GitHub API 配额用尽、网络故障、令牌权限不足时页面会提示；未认证请求通常配额较低，可填写令牌后重试。全文搜索仅覆盖文件名及已缓存的正文；未打开文档的正文尚未下载，不参与正文搜索。未打开文件的改名、移动沿用原始 Git blob，删除仅移除对应路径，不会将未加载内容当成空白提交。跨仓库移动的未打开文件需先打开，再提交。拉取时以文件 SHA 判断缓存是否仍有效。Git 不跟踪空文件夹，空目录不会提交。富文本编辑可能规范化 Markdown 格式，请在更改预览中审阅后提交。
 
 ## 文件夹与文件树
 
@@ -73,17 +103,15 @@ npm run preview
 - 点击文件夹展开或收起，双击文件夹名称重命名。
 - 拖动文档或文件夹到其他文件夹中移动；拖到「文件」栏可移回根目录。禁止把文件夹放进自身或后代目录。
 - 「导入文件夹」按浏览器提供的相对路径保留层级，读取 `.md`、`.markdown`、`.txt`；支持情况取决于浏览器的目录选择能力。
-- 旧版文档自动保留在根目录，JSON 备份保留文件夹结构，恢复时合并并分配新 ID。
+- JSON 备份保留文件夹结构，恢复时合并并分配新 ID。
 
 ## 数据和当前边界
 
-文档存储在当前来源（协议、域名、端口）的 `localStorage`，不提供应用账号和后端；可选连接 GitHub 手动拉取与提交文档。清理浏览器数据、切换浏览器、无痕模式、换域名或端口都会影响文档可见性。重要内容请定期导出 Markdown 或全文档备份；备份恢复采用合并方式，保留已有文档。
-
-自动保存失败会显示提示。检测到其他标签页写入时，当前标签页暂停保存，避免相互覆盖；先导出当前未保存内容再刷新。损坏存储不会被欢迎文档自动覆盖。
+文档由 Go 后端保存，浏览器不会将新文档或令牌写入 localStorage。网络断开或版本冲突时，页面显示未保存并暂停自动保存；请导出备份后刷新，避免关闭页面丢失内存中的改动。新版本不会把旧浏览器文档自动归属于任意登录用户；升级前请在旧版导出 JSON，登录目标账号后使用「导出 → 恢复文档备份」迁移，再清理旧来源的浏览器站点数据。旧 localStorage 不会被静默删除。
 
 首版支持常用 GFM 语法；暂不包含数学公式、Mermaid、图片上传、实时协作。Markdown 与富文本转换可能规范化空白、列表等原始格式，复杂嵌入 HTML 不保证无损往返。PDF 通过浏览器打印生成。
 
-编辑器关闭 TOAST UI 使用统计。除你主动执行 GitHub 提交外，页面不上传文档；文档中的外部图片和链接仍由浏览器访问。字体使用系统字体，无需第三方字体服务。
+编辑器关闭 TOAST UI 使用统计。页面会通过 HTTPS 自动保存文档至本站后端；文档中的外部图片和链接仍由浏览器访问。字体使用系统字体，无需第三方字体服务。
 
 写作区上方的「字体」可切换文档标题、正文和预览字体，代码保持等宽。字体外观取决于设备安装情况，缺少所选字体时使用对应字体栈回退；不下载或分发系统字体。Markdown 文件保存纯文本，不包含字体设置。
 
@@ -110,13 +138,13 @@ npm run preview
 | --- | --- |
 | ⌘ / Ctrl + Shift + N | 新建文档 |
 | ⌘ / Ctrl + K | 搜索文档 |
-| ⌘ / Ctrl + S | 保存至本地 |
+| ⌘ / Ctrl + S | 保存至服务器 |
 | ⌘ / Ctrl + / | 切换源码模式 |
 | ⌘ / Ctrl + B / I | 加粗 / 斜体 |
 | Esc | 退出专注模式 |
 
 ## 技术与许可证
 
-TypeScript + Vite + [TOAST UI Editor](https://github.com/nhn/tui.editor) + [DOMPurify](https://github.com/cure53/DOMPurify) + [Lucide](https://lucide.dev/)。本项目使用 MIT 许可证，依赖保留各自许可证。
+Go + bbolt + TypeScript + Vite + [TOAST UI Editor](https://github.com/nhn/tui.editor) + [DOMPurify](https://github.com/cure53/DOMPurify) + [Lucide](https://lucide.dev/)。本项目使用 MIT 许可证，依赖保留各自许可证。
 
 TOAST UI Editor 当前 npm 版本已标记为不再维护，首版使用其成熟的 Markdown / 富文本编辑能力，并通过 npm overrides 将其旧 DOMPurify 依赖统一至当前修复版本。锁文件固定经过验证的依赖；后续升级前需复测中文输入、Markdown 往返与粘贴清洗，长期迭代建议迁移至持续维护的编辑器内核。
