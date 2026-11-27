@@ -6,6 +6,7 @@ import DOMPurify from 'dompurify';
 import { createIcons, Plus, Search, FolderOpen, Upload, HardDrive, Moon, PanelLeft, Maximize, Download, ChevronDown, FileText, Trash2, PenLine, CodeXml, ListTree, Sparkles, Keyboard, CheckCheck, CircleAlert, Sun } from 'lucide';
 import { filename, headings, parseWorkspace, readingStats, STORAGE_KEY, type Workspace } from './documents';
 import { welcome } from './welcome';
+import { markdownShortcuts } from './markdown-shortcuts';
 import './style.css';
 
 const icons = { Plus, Search, FolderOpen, Upload, HardDrive, Moon, PanelLeft, Maximize, Download, ChevronDown, FileText, Trash2, PenLine, CodeXml, ListTree, Sparkles, Keyboard, CheckCheck, CircleAlert, Sun };
@@ -46,7 +47,7 @@ $('#app').innerHTML = `
 const editors = new Map<string, { instance: Editor; host: HTMLDivElement }>();
 function makeEditor(content: string) {
   const host = document.createElement('div'); host.className = 'editor-instance'; $('#editor').append(host);
-  const instance = new Editor({ el: host, height: '100%', initialEditType: sourceMode ? 'markdown' : 'wysiwyg', previewStyle: 'vertical', initialValue: content, language: 'zh-CN', usageStatistics: false, hideModeSwitch: true, theme, autofocus: false, toolbarItems: [['heading', 'bold', 'italic', 'strike'], ['hr', 'quote'], ['ul', 'ol', 'task'], ['table', 'link'], ['code', 'codeblock']], hooks: { addImageBlobHook: () => false } });
+  const instance = new Editor({ el: host, height: '100%', initialEditType: sourceMode ? 'markdown' : 'wysiwyg', previewStyle: 'vertical', initialValue: content, language: 'zh-CN', usageStatistics: false, hideModeSwitch: true, theme, autofocus: false, plugins: [markdownShortcuts], placeholder: '直接输入 Markdown：## 加空格创建标题，```javascript 后回车创建代码块…', toolbarItems: [['heading', 'bold', 'italic', 'strike'], ['hr', 'quote'], ['ul', 'ol', 'task'], ['table', 'link'], ['code', 'codeblock']], hooks: { addImageBlobHook: () => false } });
   editors.set(workspace.activeId, { instance, host });
   return instance;
 }
